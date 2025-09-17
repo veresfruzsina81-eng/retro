@@ -3,379 +3,264 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Sandbox Builder 2D – Proto</title>
+<title>Kis emberke – sprite demo</title>
 <style>
-  :root{
-    --bg:#0b0f1a; --panel:#0f172a; --muted:#8ea0c7; --text:#eaf2ff; --accent:#5cc8ff;
-    --btn:#111b33; --btn2:#0e1628; --border:#21304a;
-  }
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
-  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
-  /* Top bar */
-  .top{display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(16,22,36,.85);
-       border-bottom:1px solid var(--border);backdrop-filter:blur(6px)}
-  .chip{background:#0f172a;border:1px solid var(--border);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:8px}
-  .btn{background:var(--btn);border:1px solid var(--border);color:#dce7ff;border-radius:12px;padding:8px 12px;cursor:pointer;font-weight:800}
-  .btn:active{transform:translateY(1px)}
-  .btn.primary{background:linear-gradient(180deg,#23355a,#182542);border-color:#2a3b61}
-  .input{background:#0f172a;border:1px solid var(--border);color:#eaf2ff;border-radius:10px;padding:6px 10px}
-  /* Canvas */
-  #view{display:block;width:100%;height:100%;touch-action:none;background:linear-gradient(180deg,#08101e 0%,#0b1a2b 60%,#0b0f1a 100%)}
-  /* Bottom palette */
-  .bottom{display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(16,22,36,.85);
-          border-top:1px solid var(--border);backdrop-filter:blur(6px);overflow:auto}
-  .block{min-width:40px;min-height:40px;border-radius:10px;border:2px solid transparent;display:grid;place-items:center;
-         padding:2px;cursor:pointer}
-  .block.sel{border-color:#5cc8ff}
-  .swatch{width:34px;height:34px;border-radius:6px;border:1px solid #1c2a49}
-  .muted{color:var(--muted)}
-  .grow{flex:1}
+  html,body{margin:0;height:100%;background:#0b0f1a;color:#eaf2ff;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr}
+  .top{display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(16,22,36,.85);border-bottom:1px solid #21304a}
+  .kbd{background:#0f172a;border:1px solid #21304a;border-radius:8px;padding:2px 8px}
+  canvas{display:block;width:100%;height:100%;background:linear-gradient(180deg,#0a0f1a 0%,#0e1730 70%,#0a0f1a 100%)}
 </style>
 </head>
 <body>
 <div id="wrap">
   <div class="top">
-    <div class="chip"><b>Sandbox Builder 2D</b><span class="muted" id="status">–</span></div>
-    <button class="btn" id="bNew">Új világ</button>
-    <button class="btn" id="bSave">Mentés</button>
-    <button class="btn" id="bLoad">Betöltés</button>
-    <button class="btn" id="bExport">Export</button>
-    <label class="btn" for="fileImport">Import</label>
-    <input id="fileImport" type="file" accept="application/json" style="display:none" />
-    <div class="chip">
-      Ecset: <input id="brush" class="input" type="number" min="1" max="10" value="1" style="width:56px" />
-      <button class="btn" id="bErase">Radír</button>
-      <button class="btn" id="bPick">Pipetta (V)</button>
-    </div>
-    <div class="grow"></div>
-    <div class="chip">Zoom: <span id="zoomLbl">100%</span></div>
+    <div><b>Kis emberke</b> – nyilak: <span class="kbd">← →</span> • ugrás: <span class="kbd">SPACE</span></div>
   </div>
-
-  <canvas id="view"></canvas>
-
-  <div class="bottom" id="palette"></div>
+  <canvas id="game"></canvas>
 </div>
 
 <script>
 (()=>{
-  /* ================== Alap beállítások ================== */
-  const GRID_W = 64, GRID_H = 48;      // világ rács méret
-  const TILE = 24;                      // alap csempeméret px
-  const MIN_Z = 0.35, MAX_Z = 2.5;
+// ===== Canvas illesztés =====
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d');
+const DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+function fit(){
+  const w = innerWidth, h = innerHeight - document.querySelector('.top').offsetHeight;
+  cvs.width = Math.floor(w*DPR); cvs.height = Math.floor(h*DPR);
+  cvs.style.width = w+'px'; cvs.style.height = h+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+fit(); addEventListener('resize', fit);
 
-  // blokktípusok (id → vizuál + tulajdonság)
-  const BLOCKS = [
-    { id:0, name:'(üres)', color:'transparent' },
-    { id:1, name:'Fű',     color:'#2ecc71' },
-    { id:2, name:'Föld',   color:'#8e5a3c' },
-    { id:3, name:'Kő',     color:'#95a5a6' },
-    { id:4, name:'Fa',     color:'#b07d48' },
-    { id:5, name:'Tégla',  color:'#e74c3c' },
-    { id:6, name:'Üveg',   color:'rgba(135,206,235,.6)', glass:true },
-    { id:7, name:'Víz',    color:'rgba(52,152,219,.65)', fluid:true },
-    { id:8, name:'Fény',   color:'rgba(255,241,84,.85)', light:true },
-  ];
-  const DEFAULT_BLOCK = 2; // kezdő: Föld
+// ===== Fizika / játékos =====
+const groundY = ()=> Math.round(cvs.height/DPR*0.78);
+const G = 2000;                 // gravitáció px/s^2
+const MOVE_SPEED = 280;         // vízszintes sebesség px/s
+const JUMP_V = 820;             // kezdő ugrósebesség px/s
+let keys = {left:false, right:false, jump:false};
 
-  /* ================== Állapot ================== */
-  let world = makeEmptyWorld(GRID_W, GRID_H);
-  let sel = DEFAULT_BLOCK;
-  let eraser = false, picking = false;
-  let brush = 1;
-  let zoom = 1, camX = 0, camY = 0;
-  let dragging = false, dragLast = null;
-  let pinch = null;
+const player = {
+  x: 120, y: 0, w: 48, h: 60,
+  vx: 0, vy: 0,
+  facing: 1,             // 1 jobbra, -1 balra (sprite tükrözéshez)
+  state: 'idle',         // 'idle' | 'run' | 'jump'
+  frame: 0               // animáció frame index (sprite-ból)
+};
+player.y = groundY() - player.h;
 
-  const cvs = document.getElementById('view');
-  const ctx = cvs.getContext('2d');
-  const DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
-  function fit(){
-    const w = innerWidth, h = innerHeight - document.querySelector('.top').offsetHeight - document.querySelector('.bottom').offsetHeight;
-    cvs.width = Math.floor(w*DPR); cvs.height = Math.floor(h*DPR);
-    cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
-    ctx.setTransform(DPR,0,0,DPR,0,0);
-    draw();
-  }
-  window.addEventListener('resize', fit);
+// ===== Bemenet =====
+addEventListener('keydown', (e)=>{
+  if(e.code==='ArrowLeft'){ keys.left=true; }
+  if(e.code==='ArrowRight'){ keys.right=true; }
+  if(e.code==='Space'){ keys.jump=true; }
+});
+addEventListener('keyup', (e)=>{
+  if(e.code==='ArrowLeft'){ keys.left=false; }
+  if(e.code==='ArrowRight'){ keys.right=false; }
+  if(e.code==='Space'){ keys.jump=false; }
+});
 
-  /* ================== Segédek ================== */
-  function makeEmptyWorld(w,h){
-    const a = new Array(h);
-    for(let y=0;y<h;y++){ a[y] = new Uint16Array(w); }
-    return a;
-  }
-  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-  function screenToWorld(px,py){
-    const tile = TILE * zoom;
-    const gx = Math.floor((px - camX) / tile);
-    const gy = Math.floor((py - camY) / tile);
-    return {gx, gy};
-  }
-  function forBrush(gx,gy,rad,fn){
-    for(let dy=-rad+1; dy<rad; dy++){
-      for(let dx=-rad+1; dx<rad; dx++){
-        const x=gx+dx, y=gy+dy;
-        if(x>=0 && y>=0 && x<GRID_W && y<GRID_H) fn(x,y);
-      }
-    }
-  }
+// ===== Sprite generálás (offscreen) =====
+// 6 frame: 0=idle, 1..4=run, 5=jump. Mind 48x60 px
+const FW=48, FH=60, FRAMES=6;
+const sheet = document.createElement('canvas');
+sheet.width = FW*FRAMES; sheet.height = FH;
+const sctx = sheet.getContext('2d');
 
-  /* ================== Rajzolás ================== */
-  function draw(){
-    const w = cvs.width/DPR, h = cvs.height/DPR;
-    ctx.clearRect(0,0,w,h);
+function drawDude(g, x, y, t){
+  // t: 0..1 idő a ciklusban futásnál; ugrásnál külön póz
+  // Stílus: kis pixel-szerű figura, sapka, póló, nadrág, cipő
+  const skin = '#ffd7b1', hat='#ff3355', shirt='#4cc9f0', pants='#2242a6', shoe='#111', outline='#0a0a12';
 
-    // háttér „ég”
-    const grd = ctx.createLinearGradient(0,0,0,h);
-    grd.addColorStop(0,'#070d18'); grd.addColorStop(0.5,'#0b1830'); grd.addColorStop(1,'#0a0f19');
-    ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);
+  g.save();
+  g.translate(x,y);
 
-    // rács és blokkok
-    const tile = TILE * zoom;
-    const visX0 = Math.max(0, Math.floor(-camX/tile));
-    const visY0 = Math.max(0, Math.floor(-camY/tile));
-    const visX1 = Math.min(GRID_W-1, Math.ceil((w - camX)/tile));
-    const visY1 = Math.min(GRID_H-1, Math.ceil((h - camY)/tile));
+  // árnyék (alul)
+  g.fillStyle = 'rgba(0,0,0,.18)';
+  g.beginPath(); g.ellipse(0, FH-2, 14, 3, 0, 0, Math.PI*2); g.fill();
 
-    // rács
-    ctx.strokeStyle = 'rgba(33,48,74,.45)';
-    ctx.lineWidth = 1;
-    for(let x=visX0; x<=visX1; x++){
-      const sx = Math.round(camX + x*tile) + .5;
-      ctx.beginPath(); ctx.moveTo(sx, camY + visY0*tile); ctx.lineTo(sx, camY + (visY1+1)*tile); ctx.stroke();
-    }
-    for(let y=visY0; y<=visY1; y++){
-      const sy = Math.round(camY + y*tile) + .5;
-      ctx.beginPath(); ctx.moveTo(camX + visX0*tile, sy); ctx.lineTo(camX + (visX1+1)*tile, sy); ctx.stroke();
-    }
+  // kar/ láb swing számítás
+  const legA = Math.sin(t*2*Math.PI)*0.7;            // -0.7..0.7 rad
+  const legB = Math.sin(t*2*Math.PI + Math.PI)*0.7;
+  const armA = Math.sin(t*2*Math.PI + Math.PI)*0.9;
+  const armB = Math.sin(t*2*Math.PI)*0.9;
 
-    // blokkok
-    for(let y=visY0; y<=visY1; y++){
-      for(let x=visX0; x<=visX1; x++){
-        const id = world[y][x]; if(!id) continue;
-        const b = BLOCKS.find(b=>b.id===id) || BLOCKS[0];
-        const sx = Math.round(camX + x*tile), sy = Math.round(camY + y*tile);
-        // alap téglalap
-        ctx.fillStyle = b.color;
-        ctx.fillRect(sx, sy, tile, tile);
-        // üveg keret
-        if(b.glass){
-          ctx.strokeStyle = 'rgba(170,220,255,.45)';
-          ctx.strokeRect(sx+0.5,sy+0.5,tile-1,tile-1);
-        }
-        // fény ragyogás
-        if(b.light){
-          const g = ctx.createRadialGradient(sx+tile/2, sy+tile/2, 1, sx+tile/2, sy+tile/2, tile*2.2);
-          g.addColorStop(0,'rgba(255,241,84,.35)');
-          g.addColorStop(1,'rgba(255,241,84,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(sx+tile/2,sy+tile/2,tile*2.2,0,Math.PI*2); ctx.fill();
-        }
-        // kis „árnyék”
-        ctx.fillStyle='rgba(0,0,0,.08)';
-        ctx.fillRect(sx, sy+tile-3, tile, 3);
-      }
-    }
-
-    document.getElementById('zoomLbl').textContent = Math.round(zoom*100)+'%';
-  }
-
-  /* ================== Interakció ================== */
-  cvs.addEventListener('pointerdown', (e)=>{
-    cvs.setPointerCapture(e.pointerId);
-    if(e.isPrimary){
-      dragging = true; dragLast = {x:e.clientX, y:e.clientY};
-      if(e.buttons===1){ paintAt(e.clientX, e.clientY); }
-    }
-  });
-  cvs.addEventListener('pointermove', (e)=>{
-    if(!dragging) return;
-    // két ujjas pinch?
-    if(pinch && e.pointerType==='touch'){
-      // handled in touch events
-      return;
-    }
-    // bal gomb = festés, jobb/scroll = panning
-    if(e.buttons===1 && !e.ctrlKey){
-      paintAt(e.clientX, e.clientY, true);
+  // kontúr stroke segéd
+  function strokeRect(x,y,w,h,r=0){
+    g.lineWidth=1.5; g.strokeStyle=outline;
+    if(r>0){
+      g.beginPath();
+      g.moveTo(x+r,y);
+      g.arcTo(x+w,y,x+w,y+h,r);
+      g.arcTo(x+w,y+h,x,y+h,r);
+      g.arcTo(x,y+h,x,y,r);
+      g.arcTo(x,y,x+w,y,r);
+      g.closePath(); g.stroke();
     }else{
-      const dx = e.clientX - dragLast.x;
-      const dy = e.clientY - dragLast.y;
-      camX += dx; camY += dy; dragLast = {x:e.clientX, y:e.clientY};
-      draw();
-    }
-  });
-  cvs.addEventListener('pointerup', ()=>{
-    dragging = false; dragLast = null;
-  });
-
-  // Pinch-zoom (touch)
-  let touches = new Map();
-  cvs.addEventListener('touchstart', (e)=>{ if(e.touches.length===2) startPinch(e); }, {passive:false});
-  cvs.addEventListener('touchmove', (e)=>{ if(e.touches.length===2) { e.preventDefault(); movePinch(e); } }, {passive:false});
-  cvs.addEventListener('touchend', ()=>{ pinch=null; });
-
-  function startPinch(e){
-    const [t1,t2] = e.touches;
-    pinch = {
-      d: dist(t1,t2),
-      z0: zoom,
-      cx: (t1.clientX+t2.clientX)/2,
-      cy: (t1.clientY+t2.clientY)/2
-    };
-  }
-  function movePinch(e){
-    const [t1,t2] = e.touches;
-    const d = dist(t1,t2);
-    const f = d / (pinch.d || 1);
-    applyZoom(pinch.cx, pinch.cy, clamp(pinch.z0*f, MIN_Z, MAX_Z));
-  }
-  function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
-
-  // Egérgörgő zoom
-  cvs.addEventListener('wheel', (e)=>{
-    e.preventDefault();
-    const dir = e.deltaY>0 ? -1 : 1;
-    const z = clamp(zoom * (1 + dir*0.1), MIN_Z, MAX_Z);
-    applyZoom(e.clientX, e.clientY, z);
-  }, {passive:false});
-
-  function applyZoom(cx,cy,newZ){
-    if(newZ===zoom) return;
-    // fókuszpont körüli zoom – tartsuk helyben a kurzor alatti csempét
-    const tileOld = TILE*zoom;
-    const tileNew = TILE*newZ;
-    const gx = (cx - camX)/tileOld;
-    const gy = (cy - camY)/tileOld;
-    camX = cx - gx*tileNew;
-    camY = cy - gy*tileNew;
-    zoom = newZ; draw();
-  }
-
-  function paintAt(px,py,continuous=false){
-    const {gx,gy} = screenToWorld(px,py);
-    if(gx<0||gy<0||gx>=GRID_W||gy>=GRID_H) return;
-    const id = picking ? world[gy][gx] : (eraser?0:sel);
-    if(picking){
-      if(id!==0){ selectBlock(id); picking=false; setStatus('Pipetta: '+(BLOCKS.find(b=>b.id===id)?.name||id)); }
-      return;
-    }
-    forBrush(gx,gy,brush,(x,y)=>{ world[y][x]=id; });
-    if(!continuous) setStatus(eraser?'Törlés':'Blokk: '+(BLOCKS.find(b=>b.id===sel).name));
-    draw();
-  }
-
-  /* ================== Paletta / UI ================== */
-  const pal = document.getElementById('palette');
-  function renderPalette(){
-    pal.innerHTML='';
-    for(const b of BLOCKS){
-      if(b.id===0) continue; // üres nem látszik palettán
-      const d=document.createElement('button');
-      d.className='block'+(sel===b.id?' sel':'');
-      d.title=b.name;
-      const sw=document.createElement('div'); sw.className='swatch'; sw.style.background=b.color; d.appendChild(sw);
-      d.onclick=()=>{ selectBlock(b.id); };
-      pal.appendChild(d);
+      g.strokeRect(x+0.5,y+0.5,w-1,h-1);
     }
   }
-  function selectBlock(id){
-    sel=id; eraser=false;
-    [...pal.children].forEach(c=>c.classList.remove('sel'));
-    const idx = BLOCKS.filter(x=>x.id!==0).findIndex(x=>x.id===id);
-    if(idx>=0) pal.children[idx].classList.add('sel');
+
+  // LÁBAK
+  function leg(x0, phase, color){
+    g.save();
+    g.translate(x0, FH-16);
+    g.rotate(phase);
+    g.fillStyle=color;
+    g.fillRect(-4,-22,8,22); strokeRect(-4,-22,8,22,3);
+    // cipő
+    g.fillStyle=shoe; g.fillRect(-6,-2,12,6); strokeRect(-6,-2,12,6,2);
+    g.restore();
   }
 
-  document.getElementById('bNew').onclick = ()=>{
-    if(confirm('Biztos új világot kezdesz? A jelenlegi elveszik, ha nem mented.')){
-      world = makeEmptyWorld(GRID_W, GRID_H);
-      camX = camY = 0; zoom = 1; draw(); setStatus('Új világ létrehozva');
-    }
-  };
-  document.getElementById('bSave').onclick = ()=>{
-    localStorage.setItem('sandbox_world', exportWorld());
-    setStatus('Mentve a böngészőbe');
-  };
-  document.getElementById('bLoad').onclick = ()=>{
-    const raw = localStorage.getItem('sandbox_world');
-    if(!raw) return alert('Nincs mentett világ.');
-    importWorld(raw); setStatus('Világ betöltve (localStorage)');
-  };
-  document.getElementById('bExport').onclick = ()=>{
-    const blob = new Blob([exportWorld()], {type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download='sandbox-world.json'; a.click();
-    URL.revokeObjectURL(a.href);
-    setStatus('Export kész (JSON)');
-  };
-  document.getElementById('fileImport').addEventListener('change', (e)=>{
-    const f = e.target.files[0]; if(!f) return;
-    const r = new FileReader();
-    r.onload = ()=>{ importWorld(r.result); setStatus('Importálva JSON-ból'); };
-    r.readAsText(f);
-  });
-
-  const bErase=document.getElementById('bErase');
-  bErase.onclick=()=>{ eraser=!eraser; picking=false; bErase.classList.toggle('primary', eraser); setStatus(eraser?'Radír mód':'Rajzolás mód'); };
-  const bPick=document.getElementById('bPick');
-  bPick.onclick=()=>{ picking=!picking; eraser=false; bPick.classList.toggle('primary', picking); setStatus(picking?'Pipetta mód: koppints egy blokkra':'Pipetta ki'); };
-  document.getElementById('brush').oninput=(e)=>{ brush=clamp(+e.target.value||1,1,10); };
-
-  // Gyorsbillentyűk
-  window.addEventListener('keydown', (e)=>{
-    if(e.key==='v' || e.key==='V'){ picking=!picking; eraser=false; bPick.classList.toggle('primary', picking); setStatus(picking?'Pipetta mód':''); }
-    if(e.key==='e' || e.key==='E'){ eraser=!eraser; picking=false; bErase.classList.toggle('primary', eraser); setStatus(eraser?'Radír mód':'Rajzolás'); }
-    if(e.key==='+' || e.key==='='){ applyZoom(innerWidth/2, innerHeight/2, clamp(zoom*1.1, MIN_Z, MAX_Z)); }
-    if(e.key==='-' || e.key==='_'){ applyZoom(innerWidth/2, innerHeight/2, clamp(zoom/1.1, MIN_Z, MAX_Z)); }
-    if(e.key==='0'){ zoom=1; camX=camY=0; draw(); }
-  });
-
-  /* ================== Mentés / betöltés ================== */
-  function exportWorld(){
-    // tömör: szélesség, magasság, soronként base64 (Uint16 → Uint8)
-    const obj = { w:GRID_W, h:GRID_H, rows:[] };
-    for(let y=0;y<GRID_H;y++){
-      const row = world[y];
-      const bytes = new Uint8Array(row.length*2);
-      for(let i=0;i<row.length;i++){ bytes[i*2] = row[i] & 255; bytes[i*2+1] = (row[i]>>8) & 255; }
-      obj.rows.push(btoa(String.fromCharCode(...bytes)));
-    }
-    return JSON.stringify(obj);
-  }
-  function importWorld(json){
-    try{
-      const obj = JSON.parse(json);
-      if(obj.w!==GRID_W || obj.h!==GRID_H) throw new Error('Méret eltér');
-      const a = makeEmptyWorld(GRID_W, GRID_H);
-      for(let y=0;y<GRID_H;y++){
-        const bin = atob(obj.rows[y]);
-        const bytes = new Uint8Array(bin.length);
-        for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-        for(let x=0;x<GRID_W;x++){
-          a[y][x] = bytes[x*2] | (bytes[x*2+1]<<8);
-        }
-      }
-      world = a; camX=camY=0; draw();
-    }catch(e){ alert('Hibás JSON/import.'); }
+  // KAROK
+  function arm(x0,y0, phase, color){
+    g.save(); g.translate(x0,y0); g.rotate(phase);
+    g.fillStyle=color; g.fillRect(-3,0,6,18); strokeRect(-3,0,6,18,3);
+    // kéz
+    g.fillStyle=skin; g.fillRect(-3,18,6,6); strokeRect(-3,18,6,6,2);
+    g.restore();
   }
 
-  /* ================== Ads hook – későbbre ================== */
-  const Ads = {
-    async rewardedHint(){
-      // IDE jön majd az AdMob rewarded video hívás.
-      // Most: szimuláció, 1s „reklám”
-      return new Promise(res=>setTimeout(()=>res(true), 1000));
-    }
-  };
+  // test + fej fix pozíció
+  // ugrásnál test kissé feljebb és előre dől
+  let torsoX=FW/2, torsoY=FH-36, lean=0;
+  if(player.state==='jump'){ torsoY-=6; lean = 0.2; }
 
-  /* ================== UI státusz ================== */
-  function setStatus(t){ document.getElementById('status').textContent = '• ' + t; }
+  // hátsó láb/kar (mélység)
+  leg(torsoX-7, legA, pants);
+  arm(torsoX+12, torsoY+6, armA, shirt);
 
-  /* ================== Boot ================== */
-  renderPalette();
-  selectBlock(DEFAULT_BLOCK);
-  fit();
-  setStatus('Koppints a rácsra blokkokat rakni. Húzd két ujjal/egérrel a nézetet. Görgő/pinch: zoom.');
+  // TÖRZS
+  g.save();
+  g.translate(torsoX, torsoY);
+  g.rotate(lean);
+  // póló
+  g.fillStyle=shirt; g.fillRect(-12,-14,24,24); strokeRect(-12,-14,24,24,4);
+  // nyak
+  g.fillStyle=skin; g.fillRect(-5,-18,10,6); strokeRect(-5,-18,10,6,2);
+  // fej
+  g.fillStyle=skin; g.beginPath(); g.ellipse(0,-28,10,12,0,0,Math.PI*2); g.fill(); strokeRect(-10,-40,20,24,10);
+  // sapka
+  g.fillStyle=hat; g.fillRect(-11,-40,22,8); strokeRect(-11,-40,22,8,4);
+  g.fillRect(-6,-32,12,4); strokeRect(-6,-32,12,4,2);
+  g.restore();
+
+  // elülső láb/kar
+  leg(torsoX+7, legB, pants);
+  arm(torsoX-12, torsoY+6, armB, shirt);
+
+  // nadrág felső rész
+  g.fillStyle=pants; g.fillRect(torsoX-12, torsoY+8,24,10); strokeRect(torsoX-12, torsoY+8,24,10,4);
+
+  g.restore();
+}
+
+// frame-ek kirajzolása a sprite sheetre
+for(let i=0;i<FRAMES;i++){
+  const gx = i*FW, gy = 0;
+  // tisztítás
+  sctx.clearRect(gx,gy,FW,FH);
+  // idő a ciklusban a futáshoz (1..4 frame)
+  let t = 0;
+  if(i>=1 && i<=4) t = (i-1)/4; // 0, .25, .5, .75
+  // állapot beállítás „megrajzolás kedvéért”
+  const prev = player.state;
+  if(i===0) player.state='idle';
+  if(i>=1 && i<=4) player.state='run';
+  if(i===5) player.state='jump';
+  drawDude(sctx, gx+FW/2, 0, t);
+  player.state = prev;
+}
+
+// ===== Játékciklus =====
+let last = performance.now();
+let runTime = 0; // animáció idő
+
+function step(dt){
+  // vízszintes mozgás
+  player.vx = 0;
+  if(keys.left){ player.vx -= MOVE_SPEED; player.facing = -1; }
+  if(keys.right){ player.vx += MOVE_SPEED; player.facing = 1; }
+
+  // állapot
+  const onGround = (player.y + player.h >= groundY()-0.5);
+  if(keys.jump && onGround){
+    player.vy = -JUMP_V;
+  }
+
+  // gravitáció és helyzet
+  player.vy += G*dt;
+  player.x += player.vx*dt;
+  player.y += player.vy*dt;
+
+  // talaj ütközés
+  const gY = groundY();
+  if(player.y + player.h >= gY){
+    player.y = gY - player.h;
+    player.vy = 0;
+  }
+
+  // képernyőn belül tartás
+  const W = cvs.width/DPR;
+  player.x = Math.max(16, Math.min(W-16-player.w, player.x));
+
+  // animációs állapot kiválasztása
+  if(player.vy < -10 || player.vy > 10){ player.state='jump'; }
+  else if(Math.abs(player.vx) > 10){ player.state='run'; }
+  else { player.state='idle'; }
+
+  // frame váltás
+  runTime += dt;
+  if(player.state==='idle') player.frame = 0;
+  if(player.state==='run'){
+    // 10 fps körül
+    const idx = 1 + Math.floor((runTime*10)%4); // 1..4
+    player.frame = idx;
+  }
+  if(player.state==='jump') player.frame = 5;
+}
+
+function render(){
+  const W = cvs.width/DPR, H = cvs.height/DPR;
+  ctx.clearRect(0,0,W,H);
+
+  // háttér csillogás
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  for(let i=0;i<6;i++){
+    const y = (i+1)*H/8;
+    ctx.fillRect(0,y, W, 1);
+  }
+
+  // talaj
+  const gY = groundY();
+  ctx.strokeStyle='rgba(33,48,74,.6)';
+  ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,gY+0.5); ctx.lineTo(W,gY+0.5); ctx.stroke();
+
+  // emberke kirajzolása a sprite sheetből
+  const sx = player.frame*FW, sy = 0;
+  const dx = Math.round(player.x), dy = Math.round(player.y);
+
+  ctx.save();
+  // tükrözés balra nézésnél
+  if(player.facing===-1){
+    ctx.translate(dx + player.w/2, 0);
+    ctx.scale(-1,1);
+    ctx.translate(-(dx + player.w/2), 0);
+  }
+  ctx.drawImage(sheet, sx, sy, FW, FH, dx, dy, player.w, player.h);
+  ctx.restore();
+}
+
+function loop(now){
+  const dt = Math.min(0.03, (now-last)/1000); last = now;
+  step(dt); render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
 })();
 </script>
 </body>
