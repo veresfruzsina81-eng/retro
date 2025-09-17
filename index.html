@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Speed Cube – Neon Run (Prototype)</title>
+<style>
+  :root{
+    --bg:#0a0d17; --fg:#eaf2ff; --muted:#7f8aa3;
+    --c1:#00e5ff; --c2:#8a2eff; --c3:#00ff85; --c4:#ff3366; --line:#21304a;
+    --ui:#101624; --btn:#172136; --btn2:#0e1628;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:1fr auto;gap:0}
+  #game{display:block;width:100%;height:100%;touch-action:none;background:
+    linear-gradient(180deg,#0a0d17 0%,#0a0d17 50%,#0b0f1c 100%);}
+  /* HUD */
+  .hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;gap:8px;padding:10px 12px;pointer-events:none}
+  .chip{pointer-events:auto;background:rgba(16,22,36,.85);border:1px solid #1b2740;border-radius:12px;padding:8px 12px;backdrop-filter:blur(6px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+  .chip b{letter-spacing:.5px}
+  .row{display:flex;gap:8px;align-items:center}
+  .btn{pointer-events:auto;background:var(--btn);border:1px solid #21304a;color:#dce7ff;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
+  .btn.primary{background:linear-gradient(180deg,#23355a,#182542);border-color:#2a3b61}
+  .btn:active{transform:translateY(1px)}
+  /* Center overlay states */
+  .center{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none}
+  .panel{pointer-events:auto;max-width:min(92vw,520px);background:rgba(16,22,36,.92);border:1px solid #23355a;border-radius:16px;padding:18px 18px 14px;box-shadow:0 14px 50px rgba(0,0,0,.45)}
+  h1{margin:.2rem 0 .6rem;font-size:28px}
+  .muted{color:var(--muted)}
+  .lvl{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .lvl button{flex:1 0 80px;background:var(--btn2);border:1px solid #243356;color:#cfe1ff;border-radius:12px;padding:10px 12px;cursor:pointer}
+  .lvl button.lock{opacity:.45;cursor:default}
+  .kbd{display:inline-flex;align-items:center;gap:6px;background:#11192c;border:1px solid #23355a;border-radius:10px;padding:6px 10px;font-size:13px;color:#cfe1ff}
+  /* Bottom hint */
+  .hint{position:fixed;left:0;right:0;bottom:8px;text-align:center;color:#7e8aa6;font-size:12px;opacity:.8}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+</div>
+
+<!-- HUD -->
+<div class="hud">
+  <div class="chip"><b>Szint:</b> <span id="hudLevel">1</span> • <b>Kísérlet:</b> <span id="hudTry">1</span></div>
+  <div class="row">
+    <button class="btn" id="bPause">Szünet</button>
+    <button class="btn" id="bMute">🔊</button>
+  </div>
+</div>
+
+<!-- State panels -->
+<div class="center" id="stateLayer">
+  <!-- MAIN MENU -->
+  <div class="panel" id="pMenu" style="display:none">
+    <h1>Speed Cube <span style="color:var(--c1)">NEON</span></h1>
+    <p class="muted">Koppints vagy nyomd le a <span class="kbd">SPACE</span>-t az ugráshoz.  
+      Minden pálya kicsit gyorsabb és szűkebb.</p>
+    <div class="lvl" id="levelGrid"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn primary" id="bStart">Játék indítása</button>
+      <button class="btn" id="bHow">Irányítás</button>
+    </div>
+  </div>
+
+  <!-- HOWTO -->
+  <div class="panel" id="pHow" style="display:none">
+    <h1>Irányítás</h1>
+    <p class="muted">• Ugrás: <span class="kbd">SPACE</span> / érintés<br>
+    • Hosszan nyomva: kis “lebegés” (air control)<br>
+    • Ütközés = újrakezdés ugyanazon a pályán</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" id="bBackHow">Vissza</button>
+      <button class="btn primary" id="bPlayNow">Mehet</button>
+    </div>
+  </div>
+
+  <!-- FAIL -->
+  <div class="panel" id="pFail" style="display:none">
+    <h1>💥 Ütköztél!</h1>
+    <p class="muted">Megpróbálod újra?</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn primary" id="bRetry">Újrapróbálom</button>
+      <button class="btn" id="bMenu1">Menü</button>
+      <button class="btn" id="bWatch">▶  Folytatás (reklám)</button>
+    </div>
+  </div>
+
+  <!-- WIN -->
+  <div class="panel" id="pWin" style="display:none">
+    <h1>🏁 Szint teljesítve!</h1>
+    <p class="muted">Készen állsz a következőre?</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn primary" id="bNext">Következő szint</button>
+      <button class="btn" id="bMenu2">Menü</button>
+    </div>
+  </div>
+
+  <!-- PAUSE -->
+  <div class="panel" id="pPause" style="display:none">
+    <h1>Szünet</h1>
+    <p class="muted">Szusszanj egyet. A játék megállt.</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn primary" id="bResume">Folytatás</button>
+      <button class="btn" id="bMenu3">Menü</button>
+    </div>
+  </div>
+</div>
+
+<div class="hint">Tipp: érintés vagy SPACE az ugráshoz • Hosszan nyomva: rövid lebegés</div>
+
+<script>
+(() => {
+  /* ====== Ad/Analytics hookok (későbbi bekötéshez) ====== */
+  const Ads = {
+    onLevelStart(lvl){ /* pl. analytics('level_start', lvl) */ },
+    onLevelEnd(lvl,time,tries){ /* analytics */ },
+    async watchToContinue(){ 
+      // Itt hívd az AdMob/AdSense rewarded videót. Most: szimuláció.
+      return new Promise(res=>setTimeout(()=>res(true), 900)); 
+    }
+  };
+
+  /* ====== Canvas és kontextus ====== */
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  function fitCanvas(){
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.floor(w * DPR);
+    canvas.height = Math.floor(h * DPR);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  fitCanvas(); addEventListener('resize', fitCanvas);
+
+  /* ====== HUD / Panelek ====== */
+  const $ = sel => document.querySelector(sel);
+  const hudLevel = $('#hudLevel'), hudTry = $('#hudTry');
+  const pMenu = $('#pMenu'), pHow = $('#pHow'), pFail = $('#pFail'),
+        pWin = $('#pWin'), pPause = $('#pPause'), stateLayer = $('#stateLayer');
+
+  function showPanel(el){
+    [pMenu,pHow,pFail,pWin,pPause].forEach(p=>p.style.display='none');
+    if(el){ el.style.display='block'; stateLayer.style.display='grid'; }
+    else stateLayer.style.display='none';
+  }
+
+  /* ====== Játékparaméterek ====== */
+  const G = {
+    gravity: 2200,       // px/s^2
+    jumpVel: 720,        // px/s
+    airHold: 0.4,        // hosszan nyomáskor ennyivel csökken a gravitáció (arány)
+    groundY: 0,          // később töltjük
+    speedBase: 260,      // px/s
+    speedGain: 22,       // szintenkénti gyorsulás
+  };
+
+  /* ====== Szintek (egyszerű generátor) ====== */
+  // Minden szint: hossz (px), akadályok tömbje {x, w, h}, színpaletta
+  function makeLevel(idx){
+    const speed = G.speedBase + (idx-1)*G.speedGain;
+    const length = 2800 + idx*400;
+    const gapMin = Math.max(140 - idx*6, 70);   // egyre szűkebb
+    const baseH  = 70 + Math.min(30, idx*4);    // akadály magasság nő
+    const obstacles = [];
+    let x=520;
+    while(x < length){
+      const w = 40 + Math.random()*40;
+      const h = baseH + Math.random()*80;
+      obstacles.push({ x, w, h });
+      x += 180 + Math.random()*160; // távolság a következőig
+    }
+    const palettes = [
+      ['#00e5ff','#8a2eff','#00ff85','#ff3366'],
+      ['#ffd166','#06d6a0','#118ab2','#ef476f'],
+      ['#ff8fab','#b8c0ff','#80ed99','#f7b801'],
+      ['#72ddf7','#8093f1','#f17300','#ef476f'],
+    ];
+    const pal = palettes[(idx-1)%palettes.length];
+    return { idx, speed, length, obstacles, pal };
+  }
+
+  const LEVEL_COUNT = 12;
+  let levels = Array.from({length:LEVEL_COUNT}, (_,i)=>makeLevel(i+1));
+  let unlocked = +localStorage.getItem('neon_unlocked') || 1;
+
+  // Menü szintgombok
+  const levelGrid = $('#levelGrid');
+  function renderLevelButtons(){
+    levelGrid.innerHTML = '';
+    levels.forEach(L=>{
+      const b = document.createElement('button');
+      b.textContent = 'Szint ' + L.idx;
+      if(L.idx>unlocked){ b.classList.add('lock'); b.textContent += ' 🔒'; }
+      b.onclick = ()=>{ if(L.idx<=unlocked){ start(L.idx); } };
+      levelGrid.appendChild(b);
+    });
+  }
+
+  /* ====== Játékállapot ====== */
+  let state = 'menu'; // menu | playing | fail | win | pause
+  let tPrev = 0, acc = 0;
+  const player = { x:120, y:0, w:36, h:36, vy:0, onGround:false };
+  let camX = 0, level=null, tryCount=1, elapsed=0, muted=false;
+
+  // Hang (opcionális kis bip)
+  const beep = (() => {
+    let ctxA=null;
+    return (f=880, dur=0.05)=>{
+      if(muted) return;
+      try{
+        ctxA = ctxA || new (window.AudioContext||window.webkitAudioContext)();
+        const o = ctxA.createOscillator(); const g = ctxA.createGain();
+        o.connect(g); g.connect(ctxA.destination);
+        o.type='square'; o.frequency.value=f; g.gain.value=0.02;
+        o.start(); setTimeout(()=>{o.stop();}, dur*1000);
+      }catch(e){}
+    };
+  })();
+
+  function resetPlayer(){
+    player.y = G.groundY - player.h;
+    player.vy = 0; player.onGround = true;
+    camX = 0; elapsed = 0;
+  }
+
+  function start(idx){
+    level = levels[idx-1];
+    G.groundY = Math.round(window.innerHeight*0.72);
+    resetPlayer();
+    tryCount = 1;
+    hudLevel.textContent = level.idx;
+    hudTry.textContent = tryCount;
+    state = 'playing'; showPanel(null);
+    Ads.onLevelStart(level.idx);
+  }
+
+  function restart(){
+    resetPlayer();
+    tryCount++; hudTry.textContent = tryCount;
+    state = 'playing'; showPanel(null);
+  }
+
+  function nextLevel(){
+    const nxt = Math.min(LEVEL_COUNT, (level?.idx||1)+1);
+    if(nxt>unlocked){ unlocked = nxt; localStorage.setItem('neon_unlocked', unlocked); }
+    renderLevelButtons();
+    start(nxt);
+  }
+
+  // Ütközés
+  function rectHit(ax,ay,aw,ah,bx,by,bw,bh){
+    return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by;
+  }
+
+  /* ====== I/O ====== */
+  let pressing = false, justPressed=false;
+  function press(){ if(state==='menu'){ start(1); return; } pressing=true; justPressed=true; }
+  function release(){ pressing=false; }
+  addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); press(); } });
+  addEventListener('keyup',e=>{ if(e.code==='Space'){ e.preventDefault(); release(); } });
+  canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); press(); });
+  addEventListener('pointerup', e=>{ release(); });
+
+  // Gombok
+  $('#bStart').onclick = ()=>showPanel(pMenu); // menü megnyit első betöltéskor
+  $('#bHow').onclick = ()=>showPanel(pHow);
+  $('#bBackHow').onclick = ()=>showPanel(pMenu);
+  $('#bPlayNow').onclick = ()=>{ start(1); };
+  $('#bRetry').onclick = ()=>{ restart(); };
+  $('#bMenu1').onclick = $('#bMenu2').onclick = $('#bMenu3').onclick = ()=>{ state='menu'; showPanel(pMenu); };
+  $('#bNext').onclick = ()=>{ nextLevel(); };
+  $('#bPause').onclick = ()=>{ if(state==='playing'){ state='pause'; showPanel(pPause); } };
+  $('#bResume').onclick = ()=>{ if(state==='pause'){ state='playing'; showPanel(null);} };
+  $('#bMute').onclick = (e)=>{ muted=!muted; e.currentTarget.textContent = muted?'🔇':'🔊'; };
+
+  // Rewarded folytatás
+  $('#bWatch').onclick = async ()=>{
+    const ok = await Ads.watchToContinue();
+    if(ok){ showPanel(null); state='playing'; /* kis “védettség” */ player.x += 20; }
+  };
+
+  /* ====== Rajzoló segédek ====== */
+  function neonRect(x,y,w,h,color,glow=12){
+    ctx.fillStyle=color; ctx.fillRect(x,y,w,h);
+    ctx.shadowColor=color; ctx.shadowBlur=glow; ctx.strokeStyle=color; ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+    ctx.shadowBlur=0;
+  }
+  function drawGround(){
+    ctx.strokeStyle='#15203a'; ctx.lineWidth=2;
+    for(let i=0;i<8;i++){
+      const y = G.groundY + i*12;
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+  }
+
+  /* ====== Game Loop ====== */
+  function step(dt){
+    if(state!=='playing') return;
+    const L = level;
+    const speed = L.speed;
+    elapsed += dt;
+
+    // kamera halad
+    camX += speed*dt;
+
+    // ugrás/lebegés
+    if(justPressed && player.onGround){
+      player.vy = -G.jumpVel; player.onGround=false; beep(880);
+    }
+    justPressed=false;
+
+    // gravitáció (air hold)
+    const grav = pressing ? G.gravity*(1-G.airHold) : G.gravity;
+    player.vy += grav*dt;
+    player.y += player.vy*dt;
+
+    // talaj
+    if(player.y + player.h >= G.groundY){
+      player.y = G.groundY - player.h;
+      player.vy = 0; player.onGround = true;
+    }
+
+    // akadályok ütközés
+    for(const o of L.obstacles){
+      const ox = Math.round(o.x - camX + 160); // 160px “kamera előnézet”
+      const oy = G.groundY - o.h;
+      if(ox+o.w< -80 || ox>canvas.width+80) continue;
+      if(rectHit(player.x,player.y,player.w,player.h, ox,oy,o.w,o.h)){
+        // FAIL
+        beep(220);
+        state='fail'; showPanel(pFail);
+        Ads.onLevelEnd(L.idx, elapsed, tryCount);
+        return;
+      }
+    }
+
+    // cél: ha elhagytuk a pálya végét
+    if(camX > L.length){
+      beep(1320);
+      state='win'; showPanel(pWin);
+      const nxt = Math.min(LEVEL_COUNT, (L.idx||1)+1);
+      if(nxt>unlocked){ unlocked=nxt; localStorage.setItem('neon_unlocked', unlocked); renderLevelButtons(); }
+      Ads.onLevelEnd(L.idx, elapsed, tryCount);
+    }
+  }
+
+  function render(){
+    // háttér rács
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // halovány grid
+    ctx.strokeStyle = 'rgba(33,48,74,.55)'; ctx.lineWidth = 1;
+    for(let x= (-(camX%40)); x<canvas.width; x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+    for(let y=0;y<canvas.height;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+
+    drawGround();
+
+    // játékos
+    neonRect(player.x, player.y, player.w, player.h, '#00e5ff', 18);
+
+    if(level){
+      const colors = level.pal;
+      // akadályok
+      for(let i=0;i<level.obstacles.length;i++){
+        const o = level.obstacles[i];
+        const ox = Math.round(o.x - camX + 160);
+        const oy = G.groundY - o.h;
+        if(ox+o.w< -80 || ox>canvas.width+80) continue;
+        const c = colors[i % colors.length];
+        neonRect(ox, oy, o.w, o.h, c, 14);
+      }
+
+      // előrejelző csík (progress)
+      const p = Math.max(0, Math.min(1, camX/level.length));
+      const barW = Math.min(canvas.width*0.6, 320), barX = (canvas.width - barW)/2, barY = 18;
+      ctx.fillStyle='rgba(16,22,36,.7)'; ctx.fillRect(barX,barY,barW,6);
+      ctx.fillStyle='#00e5ff'; ctx.fillRect(barX,barY,barW*p,6);
+      ctx.strokeStyle='#21304a'; ctx.strokeRect(barX+0.5,barY+0.5,barW-1,6-1);
+    }
+  }
+
+  function loop(ts){
+    const t = ts/1000;
+    const dt = Math.min(0.033, t - tPrev || 0.016);
+    tPrev = t;
+
+    step(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  /* ====== Induló állapot ====== */
+  renderLevelButtons();
+  showPanel(pMenu);
+})();
+</script>
+</body>
+</html>
