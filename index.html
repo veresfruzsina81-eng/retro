@@ -3,344 +3,379 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Speed Cube – Neon Run (Varied Obstacles)</title>
+<title>Sandbox Builder 2D – Proto</title>
 <style>
   :root{
-    --bg:#0a0d17; --fg:#eaf2ff; --muted:#7f8aa3;
-    --c1:#00e5ff; --c2:#8a2eff; --c3:#00ff85; --c4:#ff3366;
-    --line:#21304a; --ui:#101624; --btn:#172136; --btn2:#0e1628;
+    --bg:#0b0f1a; --panel:#0f172a; --muted:#8ea0c7; --text:#eaf2ff; --accent:#5cc8ff;
+    --btn:#111b33; --btn2:#0e1628; --border:#21304a;
   }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
-  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:1fr auto}
-  #game{display:block;width:100%;height:100%;touch-action:none;background:linear-gradient(180deg,#0a0d17 0%,#0a0d17 50%,#0b0f1c 100%)}
-  .hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;gap:8px;padding:10px 12px;pointer-events:none}
-  .chip{pointer-events:auto;background:rgba(16,22,36,.85);border:1px solid #1b2740;border-radius:12px;padding:8px 12px;backdrop-filter:blur(6px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
-  .row{display:flex;gap:8px;align-items:center}
-  .btn{pointer-events:auto;background:var(--btn);border:1px solid #21304a;color:#dce7ff;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+  /* Top bar */
+  .top{display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(16,22,36,.85);
+       border-bottom:1px solid var(--border);backdrop-filter:blur(6px)}
+  .chip{background:#0f172a;border:1px solid var(--border);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:8px}
+  .btn{background:var(--btn);border:1px solid var(--border);color:#dce7ff;border-radius:12px;padding:8px 12px;cursor:pointer;font-weight:800}
+  .btn:active{transform:translateY(1px)}
   .btn.primary{background:linear-gradient(180deg,#23355a,#182542);border-color:#2a3b61}
-  .center{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none}
-  .panel{pointer-events:auto;max-width:min(92vw,520px);background:rgba(16,22,36,.92);border:1px solid #23355a;border-radius:16px;padding:18px 18px 14px;box-shadow:0 14px 50px rgba(0,0,0,.45)}
-  h1{margin:.2rem 0 .6rem;font-size:28px}
-  .muted{color:var(--muted)} .lvl{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .lvl button{flex:1 0 80px;background:var(--btn2);border:1px solid #243356;color:#cfe1ff;border-radius:12px;padding:10px 12px;cursor:pointer}
-  .lvl button.lock{opacity:.45;cursor:default}
-  .kbd{display:inline-flex;align-items:center;gap:6px;background:#11192c;border:1px solid #23355a;border-radius:10px;padding:6px 10px;font-size:13px;color:#cfe1ff}
-  .hint{position:fixed;left:0;right:0;bottom:8px;text-align:center;color:#7e8aa6;font-size:12px;opacity:.8}
+  .input{background:#0f172a;border:1px solid var(--border);color:#eaf2ff;border-radius:10px;padding:6px 10px}
+  /* Canvas */
+  #view{display:block;width:100%;height:100%;touch-action:none;background:linear-gradient(180deg,#08101e 0%,#0b1a2b 60%,#0b0f1a 100%)}
+  /* Bottom palette */
+  .bottom{display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(16,22,36,.85);
+          border-top:1px solid var(--border);backdrop-filter:blur(6px);overflow:auto}
+  .block{min-width:40px;min-height:40px;border-radius:10px;border:2px solid transparent;display:grid;place-items:center;
+         padding:2px;cursor:pointer}
+  .block.sel{border-color:#5cc8ff}
+  .swatch{width:34px;height:34px;border-radius:6px;border:1px solid #1c2a49}
+  .muted{color:var(--muted)}
+  .grow{flex:1}
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="game"></canvas></div>
-
-<!-- HUD -->
-<div class="hud">
-  <div class="chip"><b>Szint:</b> <span id="hudLevel">1</span> • <b>Kísérlet:</b> <span id="hudTry">1</span></div>
-  <div class="row">
-    <button class="btn" id="bPause">Szünet</button>
-    <button class="btn" id="bMute">🔊</button>
+<div id="wrap">
+  <div class="top">
+    <div class="chip"><b>Sandbox Builder 2D</b><span class="muted" id="status">–</span></div>
+    <button class="btn" id="bNew">Új világ</button>
+    <button class="btn" id="bSave">Mentés</button>
+    <button class="btn" id="bLoad">Betöltés</button>
+    <button class="btn" id="bExport">Export</button>
+    <label class="btn" for="fileImport">Import</label>
+    <input id="fileImport" type="file" accept="application/json" style="display:none" />
+    <div class="chip">
+      Ecset: <input id="brush" class="input" type="number" min="1" max="10" value="1" style="width:56px" />
+      <button class="btn" id="bErase">Radír</button>
+      <button class="btn" id="bPick">Pipetta (V)</button>
+    </div>
+    <div class="grow"></div>
+    <div class="chip">Zoom: <span id="zoomLbl">100%</span></div>
   </div>
+
+  <canvas id="view"></canvas>
+
+  <div class="bottom" id="palette"></div>
 </div>
-
-<!-- Állapot panelek -->
-<div class="center" id="stateLayer">
-  <div class="panel" id="pMenu" style="display:none">
-    <h1>Speed Cube <span style="color:var(--c1)">NEON</span></h1>
-    <p class="muted">Ugrás: <span class="kbd">SPACE</span> / érintés. Új akadályok: tüskék, fűrészek, liftek és szakadékok.</p>
-    <div class="lvl" id="levelGrid"></div>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn primary" id="bStart">Játék indítása</button>
-      <button class="btn" id="bHow">Irányítás</button>
-    </div>
-  </div>
-  <div class="panel" id="pHow" style="display:none">
-    <h1>Irányítás</h1>
-    <p class="muted">• Ugrás: <span class="kbd">SPACE</span> / érintés<br>• Hosszan: lebegés (kisebb gravitáció)<br>• Ütközés = restart</p>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn" id="bBackHow">Vissza</button>
-      <button class="btn primary" id="bPlayNow">Mehet</button>
-    </div>
-  </div>
-  <div class="panel" id="pFail" style="display:none">
-    <h1>💥 Ütköztél!</h1>
-    <p class="muted">Megpróbálod újra?</p>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn primary" id="bRetry">Újrapróbálom</button>
-      <button class="btn" id="bMenu1">Menü</button>
-      <button class="btn" id="bWatch">▶ Folytatás (reklám)</button>
-    </div>
-  </div>
-  <div class="panel" id="pWin" style="display:none">
-    <h1>🏁 Szint teljesítve!</h1>
-    <p class="muted">Készen állsz a következőre?</p>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn primary" id="bNext">Következő szint</button>
-      <button class="btn" id="bMenu2">Menü</button>
-    </div>
-  </div>
-  <div class="panel" id="pPause" style="display:none">
-    <h1>Szünet</h1>
-    <p class="muted">A játék megállt.</p>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn primary" id="bResume">Folytatás</button>
-      <button class="btn" id="bMenu3">Menü</button>
-    </div>
-  </div>
-</div>
-
-<div class="hint">Tipp: érintés vagy SPACE az ugráshoz • Hosszan: lebegés • Új akadálytípusok aktívak</div>
 
 <script>
 (()=>{
-  /* ===== Ad/Analytics hookok ===== */
-  const Ads = {
-    onLevelStart(l){}, onLevelEnd(l,t,tries){},
-    async watchToContinue(){ return new Promise(res=>setTimeout(()=>res(true),900)); }
-  };
+  /* ================== Alap beállítások ================== */
+  const GRID_W = 64, GRID_H = 48;      // világ rács méret
+  const TILE = 24;                      // alap csempeméret px
+  const MIN_Z = 0.35, MAX_Z = 2.5;
 
-  /* ===== Canvas ===== */
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  // blokktípusok (id → vizuál + tulajdonság)
+  const BLOCKS = [
+    { id:0, name:'(üres)', color:'transparent' },
+    { id:1, name:'Fű',     color:'#2ecc71' },
+    { id:2, name:'Föld',   color:'#8e5a3c' },
+    { id:3, name:'Kő',     color:'#95a5a6' },
+    { id:4, name:'Fa',     color:'#b07d48' },
+    { id:5, name:'Tégla',  color:'#e74c3c' },
+    { id:6, name:'Üveg',   color:'rgba(135,206,235,.6)', glass:true },
+    { id:7, name:'Víz',    color:'rgba(52,152,219,.65)', fluid:true },
+    { id:8, name:'Fény',   color:'rgba(255,241,84,.85)', light:true },
+  ];
+  const DEFAULT_BLOCK = 2; // kezdő: Föld
+
+  /* ================== Állapot ================== */
+  let world = makeEmptyWorld(GRID_W, GRID_H);
+  let sel = DEFAULT_BLOCK;
+  let eraser = false, picking = false;
+  let brush = 1;
+  let zoom = 1, camX = 0, camY = 0;
+  let dragging = false, dragLast = null;
+  let pinch = null;
+
+  const cvs = document.getElementById('view');
+  const ctx = cvs.getContext('2d');
   const DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
-  function fit(){ const w=innerWidth,h=innerHeight; canvas.width=w*DPR; canvas.height=h*DPR; canvas.style.width=w+'px'; canvas.style.height=h+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
-  fit(); addEventListener('resize', fit);
+  function fit(){
+    const w = innerWidth, h = innerHeight - document.querySelector('.top').offsetHeight - document.querySelector('.bottom').offsetHeight;
+    cvs.width = Math.floor(w*DPR); cvs.height = Math.floor(h*DPR);
+    cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    draw();
+  }
+  window.addEventListener('resize', fit);
 
-  /* ===== UI ===== */
-  const $=s=>document.querySelector(s);
-  const hudLevel=$('#hudLevel'), hudTry=$('#hudTry');
-  const pMenu=$('#pMenu'), pHow=$('#pHow'), pFail=$('#pFail'), pWin=$('#pWin'), pPause=$('#pPause'), layer=$('#stateLayer');
-  function showPanel(el){ [pMenu,pHow,pFail,pWin,pPause].forEach(p=>p.style.display='none'); if(el){ el.style.display='block'; layer.style.display='grid'; } else layer.style.display='none'; }
-
-  /* ===== Játékparaméterek ===== */
-  const G={ gravity:2200, jump:720, airHold:0.45, groundY:0, speedBase:260, speedGain:24 };
-  const LEVEL_COUNT=12;
-  const palList=[ ['#00e5ff','#8a2eff','#00ff85','#ff3366'], ['#ffd166','#06d6a0','#118ab2','#ef476f'], ['#ff8fab','#b8c0ff','#80ed99','#f7b801'], ['#72ddf7','#8093f1','#f17300','#ef476f'] ];
-  let unlocked=+localStorage.getItem('neon_unlocked2')||1;
-
-  /* ===== Szint generátor (vegyes akadályok) ===== */
-  // típusok: box | spike | saw | moving | pit
-  function makeLevel(idx){
-    const speed=G.speedBase+(idx-1)*G.speedGain;
-    const length=3000+idx*450;
-    const obstacles=[];
-    let x=560;
-    function add(o){ obstacles.push(o); }
-    // sűrűség nő: nagyobb idx → több elem
-    while(x<length){
-      const r=Math.random();
-      if(r<0.18){ // szakadék
-        const w=120+Math.random()* (80+idx*4);
-        add({type:'pit', x, w});
-        x+=w+160+Math.random()*140;
-      }else if(r<0.42){ // spike
-        const w=60+Math.random()*40, h=80+Math.random()* (30+idx*3);
-        add({type:'spike', x, w, h});
-        x+=140+Math.random()*140;
-      }else if(r<0.62){ // saw
-        const r0=24+Math.random()*18;
-        add({type:'saw', x, r:r0, yOffset: - (40+Math.random()*60), spin:(Math.random()<.5?-1:1)*(2+Math.random()*2)});
-        x+=170+Math.random()*160;
-      }else if(r<0.82){ // moving pillar
-        const w=36+Math.random()*30, h=90+Math.random()* (40+idx*2);
-        add({type:'moving', x, w, h, amp: 30+Math.random()*50, freq: 1+Math.random()*1.2, phase: Math.random()*Math.PI*2});
-        x+=170+Math.random()*150;
-      }else{ // box
-        const w=40+Math.random()*50, h=80+Math.random()* (40+idx*2);
-        add({type:'box', x, w, h});
-        x+=150+Math.random()*140;
+  /* ================== Segédek ================== */
+  function makeEmptyWorld(w,h){
+    const a = new Array(h);
+    for(let y=0;y<h;y++){ a[y] = new Uint16Array(w); }
+    return a;
+  }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+  function screenToWorld(px,py){
+    const tile = TILE * zoom;
+    const gx = Math.floor((px - camX) / tile);
+    const gy = Math.floor((py - camY) / tile);
+    return {gx, gy};
+  }
+  function forBrush(gx,gy,rad,fn){
+    for(let dy=-rad+1; dy<rad; dy++){
+      for(let dx=-rad+1; dx<rad; dx++){
+        const x=gx+dx, y=gy+dy;
+        if(x>=0 && y>=0 && x<GRID_W && y<GRID_H) fn(x,y);
       }
     }
-    const pal=palList[(idx-1)%palList.length];
-    return {idx,speed,length,obstacles,pal};
-  }
-  const levels=Array.from({length:LEVEL_COUNT},(_,i)=>makeLevel(i+1));
-
-  /* ===== Állapot ===== */
-  let state='menu', muted=false;
-  const player={x:120,y:0,w:36,h:36,vy:0,onGround:false};
-  let camX=0, level=null, tryCount=1, elapsed=0, tPrev=0;
-
-  const beep=(()=>{ let a=null; return (f=880,d=0.05)=>{ if(muted) return; try{ a=a||new (window.AudioContext||window.webkitAudioContext)(); const o=a.createOscillator(), g=a.createGain(); o.connect(g); g.connect(a.destination); o.type='square'; o.frequency.value=f; g.gain.value=.02; o.start(); setTimeout(()=>o.stop(), d*1000);}catch(e){} }; })();
-
-  function resetPlayer(){ player.y=G.groundY-player.h; player.vy=0; player.onGround=true; camX=0; elapsed=0; }
-  function start(idx){ level=levels[idx-1]; G.groundY=Math.round(innerHeight*0.72); resetPlayer(); tryCount=1; hudLevel.textContent=level.idx; hudTry.textContent=tryCount; state='playing'; showPanel(null); Ads.onLevelStart(level.idx); }
-  function restart(){ resetPlayer(); tryCount++; hudTry.textContent=tryCount; state='playing'; showPanel(null); }
-  function nextLevel(){ const nxt=Math.min(LEVEL_COUNT,(level?.idx||1)+1); if(nxt>unlocked){ unlocked=nxt; localStorage.setItem('neon_unlocked2',unlocked); } renderLevelButtons(); start(nxt); }
-
-  /* ===== Input ===== */
-  let pressing=false, justPressed=false;
-  function press(){ if(state==='menu'){ start(1); return; } pressing=true; justPressed=true; }
-  function release(){ pressing=false; }
-  addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); press(); }});
-  addEventListener('keyup',e=>{ if(e.code==='Space'){ e.preventDefault(); release(); }});
-  canvas.addEventListener('pointerdown',e=>{ e.preventDefault(); press(); });
-  addEventListener('pointerup',e=>{ release(); });
-
-  // UI gombok
-  $('#bStart').onclick=()=>showPanel(pMenu); $('#bHow').onclick=()=>showPanel(pHow);
-  $('#bBackHow').onclick=()=>showPanel(pMenu); $('#bPlayNow').onclick=()=>start(1);
-  $('#bRetry').onclick=()=>restart();
-  $('#bMenu1').onclick=$('#bMenu2').onclick=$('#bMenu3').onclick=()=>{ state='menu'; showPanel(pMenu); };
-  $('#bNext').onclick=()=>nextLevel();
-  $('#bPause').onclick=()=>{ if(state==='playing'){ state='pause'; showPanel(pPause);} };
-  $('#bResume').onclick=()=>{ if(state==='pause'){ state='playing'; showPanel(null);} };
-  $('#bMute').onclick=(e)=>{ muted=!muted; e.currentTarget.textContent=muted?'🔇':'🔊'; };
-  $('#bWatch').onclick=async()=>{ const ok=await Ads.watchToContinue(); if(ok){ showPanel(null); state='playing'; player.x+=20; } };
-
-  /* ===== Segédek rajzhoz ===== */
-  function neonRect(x,y,w,h,c,g=12){ ctx.fillStyle=c; ctx.fillRect(x,y,w,h); ctx.shadowColor=c; ctx.shadowBlur=g; ctx.strokeStyle=c; ctx.strokeRect(x+0.5,y+0.5,w-1,h-1); ctx.shadowBlur=0; }
-  function neonTri(x,y,w,h,c){ ctx.fillStyle=c; ctx.beginPath(); ctx.moveTo(x,y+h); ctx.lineTo(x+w/2,y); ctx.lineTo(x+w,y+h); ctx.closePath(); ctx.fill(); ctx.shadowColor=c; ctx.shadowBlur=12; ctx.strokeStyle=c; ctx.stroke(); ctx.shadowBlur=0; }
-  function neonCircle(cx,cy,r,c){ ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.closePath(); ctx.fillStyle=c; ctx.fill(); ctx.shadowColor=c; ctx.shadowBlur=12; ctx.strokeStyle=c; ctx.stroke(); ctx.shadowBlur=0; }
-  function drawGround(){ ctx.strokeStyle='rgba(33,48,74,.55)'; ctx.lineWidth=1; for(let y=G.groundY;y<canvas.height;y+=12){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); } }
-
-  /* ===== Ütközés segédek ===== */
-  function rectHit(ax,ay,aw,ah,bx,by,bw,bh){ return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by; }
-  function rectCircleHit(rx,ry,rw,rh,cx,cy,cr){
-    const nx=Math.max(rx, Math.min(cx, rx+rw));
-    const ny=Math.max(ry, Math.min(cy, ry+rh));
-    const dx=cx-nx, dy=cy-ny;
-    return dx*dx+dy*dy <= cr*cr;
-  }
-  // Spike: a játékos aljának középpontját hasonlítjuk a háromszög "tető" profiljához
-  function spikeHit(px,py,pw,ph, tx,ty,tw,th){
-    const cx=px+pw/2, by=py+ph; // player bottom-center
-    if(cx<tx || cx>tx+tw || by<ty || by>ty+th) return false;
-    const mid=tx+tw/2;
-    const dy = Math.abs(cx-mid)*(th/(tw/2));
-    const yAt = ty + dy;
-    return by >= yAt - 0.5; // kis engedmény
   }
 
-  /* ===== Talaj logika szakadékkal ===== */
-  function worldXfromScreen(sx){ return camX - 160 + sx; }
-  function localGroundYAt(playerWorldX){
-    // ha bármelyik pit (szakadék) alatt állunk → nincs talaj
-    for(const o of level.obstacles){
-      if(o.type!=='pit') continue;
-      if(playerWorldX >= o.x && playerWorldX <= o.x+o.w) return Infinity; // „leesik”
+  /* ================== Rajzolás ================== */
+  function draw(){
+    const w = cvs.width/DPR, h = cvs.height/DPR;
+    ctx.clearRect(0,0,w,h);
+
+    // háttér „ég”
+    const grd = ctx.createLinearGradient(0,0,0,h);
+    grd.addColorStop(0,'#070d18'); grd.addColorStop(0.5,'#0b1830'); grd.addColorStop(1,'#0a0f19');
+    ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);
+
+    // rács és blokkok
+    const tile = TILE * zoom;
+    const visX0 = Math.max(0, Math.floor(-camX/tile));
+    const visY0 = Math.max(0, Math.floor(-camY/tile));
+    const visX1 = Math.min(GRID_W-1, Math.ceil((w - camX)/tile));
+    const visY1 = Math.min(GRID_H-1, Math.ceil((h - camY)/tile));
+
+    // rács
+    ctx.strokeStyle = 'rgba(33,48,74,.45)';
+    ctx.lineWidth = 1;
+    for(let x=visX0; x<=visX1; x++){
+      const sx = Math.round(camX + x*tile) + .5;
+      ctx.beginPath(); ctx.moveTo(sx, camY + visY0*tile); ctx.lineTo(sx, camY + (visY1+1)*tile); ctx.stroke();
     }
-    return G.groundY;
+    for(let y=visY0; y<=visY1; y++){
+      const sy = Math.round(camY + y*tile) + .5;
+      ctx.beginPath(); ctx.moveTo(camX + visX0*tile, sy); ctx.lineTo(camX + (visX1+1)*tile, sy); ctx.stroke();
+    }
+
+    // blokkok
+    for(let y=visY0; y<=visY1; y++){
+      for(let x=visX0; x<=visX1; x++){
+        const id = world[y][x]; if(!id) continue;
+        const b = BLOCKS.find(b=>b.id===id) || BLOCKS[0];
+        const sx = Math.round(camX + x*tile), sy = Math.round(camY + y*tile);
+        // alap téglalap
+        ctx.fillStyle = b.color;
+        ctx.fillRect(sx, sy, tile, tile);
+        // üveg keret
+        if(b.glass){
+          ctx.strokeStyle = 'rgba(170,220,255,.45)';
+          ctx.strokeRect(sx+0.5,sy+0.5,tile-1,tile-1);
+        }
+        // fény ragyogás
+        if(b.light){
+          const g = ctx.createRadialGradient(sx+tile/2, sy+tile/2, 1, sx+tile/2, sy+tile/2, tile*2.2);
+          g.addColorStop(0,'rgba(255,241,84,.35)');
+          g.addColorStop(1,'rgba(255,241,84,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(sx+tile/2,sy+tile/2,tile*2.2,0,Math.PI*2); ctx.fill();
+        }
+        // kis „árnyék”
+        ctx.fillStyle='rgba(0,0,0,.08)';
+        ctx.fillRect(sx, sy+tile-3, tile, 3);
+      }
+    }
+
+    document.getElementById('zoomLbl').textContent = Math.round(zoom*100)+'%';
   }
 
-  /* ===== Game loop ===== */
-  function step(dt){
-    if(state!=='playing') return;
-    const L=level, speed=L.speed;
-    elapsed+=dt; camX+=speed*dt;
-
-    // Ugrás / lebegés
-    if(justPressed && player.onGround){ player.vy=-G.jump; player.onGround=false; beep(880); }
-    justPressed=false;
-    const grav=pressing? G.gravity*(1-G.airHold) : G.gravity;
-    player.vy+=grav*dt; player.y+=player.vy*dt;
-
-    // Talaj (szakadékkal)
-    const pWorld=worldXfromScreen(player.x);
-    const gY=localGroundYAt(pWorld);
-    if(gY!==Infinity){
-      if(player.y+player.h>=gY){ player.y=gY-player.h; player.vy=0; player.onGround=true; }
+  /* ================== Interakció ================== */
+  cvs.addEventListener('pointerdown', (e)=>{
+    cvs.setPointerCapture(e.pointerId);
+    if(e.isPrimary){
+      dragging = true; dragLast = {x:e.clientX, y:e.clientY};
+      if(e.buttons===1){ paintAt(e.clientX, e.clientY); }
+    }
+  });
+  cvs.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    // két ujjas pinch?
+    if(pinch && e.pointerType==='touch'){
+      // handled in touch events
+      return;
+    }
+    // bal gomb = festés, jobb/scroll = panning
+    if(e.buttons===1 && !e.ctrlKey){
+      paintAt(e.clientX, e.clientY, true);
     }else{
-      // se talaj → ha túl mélyre esik, fail
-      if(player.y>canvas.height+200){ fail(); return; }
+      const dx = e.clientX - dragLast.x;
+      const dy = e.clientY - dragLast.y;
+      camX += dx; camY += dy; dragLast = {x:e.clientX, y:e.clientY};
+      draw();
     }
+  });
+  cvs.addEventListener('pointerup', ()=>{
+    dragging = false; dragLast = null;
+  });
 
-    // Akadályok ütközés
-    for(const o of L.obstacles){
-      const sx = Math.round(o.x - camX + 160);
-      if(sx>canvas.width+120 || sx< -240) continue;
+  // Pinch-zoom (touch)
+  let touches = new Map();
+  cvs.addEventListener('touchstart', (e)=>{ if(e.touches.length===2) startPinch(e); }, {passive:false});
+  cvs.addEventListener('touchmove', (e)=>{ if(e.touches.length===2) { e.preventDefault(); movePinch(e); } }, {passive:false});
+  cvs.addEventListener('touchend', ()=>{ pinch=null; });
 
-      if(o.type==='box'){
-        const oy=G.groundY - o.h;
-        if(rectHit(player.x,player.y,player.w,player.h, sx,oy,o.w,o.h)) return fail();
-      }
-      if(o.type==='moving'){
-        const oy=G.groundY - o.h + Math.sin(elapsed*o.freq + o.phase)*o.amp;
-        if(rectHit(player.x,player.y,player.w,player.h, sx,oy,o.w,o.h)) return fail();
-      }
-      if(o.type==='spike'){
-        const oy=G.groundY - o.h;
-        if(spikeHit(player.x,player.y,player.w,player.h, sx,oy,o.w,o.h)) return fail();
-      }
-      if(o.type==='saw'){
-        const cy = G.groundY + o.yOffset + Math.sin(elapsed*1.2)*6;
-        const cx = sx + o.r + 10;
-        if(rectCircleHit(player.x,player.y,player.w,player.h, cx,cy,o.r)) return fail();
-      }
-      // pit-nél a talajt már a localGroundYAt kezeli
-    }
+  function startPinch(e){
+    const [t1,t2] = e.touches;
+    pinch = {
+      d: dist(t1,t2),
+      z0: zoom,
+      cx: (t1.clientX+t2.clientX)/2,
+      cy: (t1.clientY+t2.clientY)/2
+    };
+  }
+  function movePinch(e){
+    const [t1,t2] = e.touches;
+    const d = dist(t1,t2);
+    const f = d / (pinch.d || 1);
+    applyZoom(pinch.cx, pinch.cy, clamp(pinch.z0*f, MIN_Z, MAX_Z));
+  }
+  function dist(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
 
-    // Cél
-    if(camX>L.length){ win(); }
+  // Egérgörgő zoom
+  cvs.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    const dir = e.deltaY>0 ? -1 : 1;
+    const z = clamp(zoom * (1 + dir*0.1), MIN_Z, MAX_Z);
+    applyZoom(e.clientX, e.clientY, z);
+  }, {passive:false});
+
+  function applyZoom(cx,cy,newZ){
+    if(newZ===zoom) return;
+    // fókuszpont körüli zoom – tartsuk helyben a kurzor alatti csempét
+    const tileOld = TILE*zoom;
+    const tileNew = TILE*newZ;
+    const gx = (cx - camX)/tileOld;
+    const gy = (cy - camY)/tileOld;
+    camX = cx - gx*tileNew;
+    camY = cy - gy*tileNew;
+    zoom = newZ; draw();
   }
 
-  function render(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    // háttér grid
-    ctx.strokeStyle='rgba(33,48,74,.55)'; ctx.lineWidth=1;
-    for(let x=(- (camX%40)); x<canvas.width; x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
-    for(let y=0;y<canvas.height;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+  function paintAt(px,py,continuous=false){
+    const {gx,gy} = screenToWorld(px,py);
+    if(gx<0||gy<0||gx>=GRID_W||gy>=GRID_H) return;
+    const id = picking ? world[gy][gx] : (eraser?0:sel);
+    if(picking){
+      if(id!==0){ selectBlock(id); picking=false; setStatus('Pipetta: '+(BLOCKS.find(b=>b.id===id)?.name||id)); }
+      return;
+    }
+    forBrush(gx,gy,brush,(x,y)=>{ world[y][x]=id; });
+    if(!continuous) setStatus(eraser?'Törlés':'Blokk: '+(BLOCKS.find(b=>b.id===sel).name));
+    draw();
+  }
 
-    drawGround();
+  /* ================== Paletta / UI ================== */
+  const pal = document.getElementById('palette');
+  function renderPalette(){
+    pal.innerHTML='';
+    for(const b of BLOCKS){
+      if(b.id===0) continue; // üres nem látszik palettán
+      const d=document.createElement('button');
+      d.className='block'+(sel===b.id?' sel':'');
+      d.title=b.name;
+      const sw=document.createElement('div'); sw.className='swatch'; sw.style.background=b.color; d.appendChild(sw);
+      d.onclick=()=>{ selectBlock(b.id); };
+      pal.appendChild(d);
+    }
+  }
+  function selectBlock(id){
+    sel=id; eraser=false;
+    [...pal.children].forEach(c=>c.classList.remove('sel'));
+    const idx = BLOCKS.filter(x=>x.id!==0).findIndex(x=>x.id===id);
+    if(idx>=0) pal.children[idx].classList.add('sel');
+  }
 
-    // player
-    neonRect(player.x,player.y,player.w,player.h,'#00e5ff',18);
+  document.getElementById('bNew').onclick = ()=>{
+    if(confirm('Biztos új világot kezdesz? A jelenlegi elveszik, ha nem mented.')){
+      world = makeEmptyWorld(GRID_W, GRID_H);
+      camX = camY = 0; zoom = 1; draw(); setStatus('Új világ létrehozva');
+    }
+  };
+  document.getElementById('bSave').onclick = ()=>{
+    localStorage.setItem('sandbox_world', exportWorld());
+    setStatus('Mentve a böngészőbe');
+  };
+  document.getElementById('bLoad').onclick = ()=>{
+    const raw = localStorage.getItem('sandbox_world');
+    if(!raw) return alert('Nincs mentett világ.');
+    importWorld(raw); setStatus('Világ betöltve (localStorage)');
+  };
+  document.getElementById('bExport').onclick = ()=>{
+    const blob = new Blob([exportWorld()], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download='sandbox-world.json'; a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus('Export kész (JSON)');
+  };
+  document.getElementById('fileImport').addEventListener('change', (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ()=>{ importWorld(r.result); setStatus('Importálva JSON-ból'); };
+    r.readAsText(f);
+  });
 
-    if(level){
-      const C=level.pal;
-      // akadályok
-      let i=0;
-      for(const o of level.obstacles){
-        const sx = Math.round(o.x - camX + 160);
-        if(sx>canvas.width+200 || sx< -260){ i++; continue; }
-        const col = C[i++ % C.length];
+  const bErase=document.getElementById('bErase');
+  bErase.onclick=()=>{ eraser=!eraser; picking=false; bErase.classList.toggle('primary', eraser); setStatus(eraser?'Radír mód':'Rajzolás mód'); };
+  const bPick=document.getElementById('bPick');
+  bPick.onclick=()=>{ picking=!picking; eraser=false; bPick.classList.toggle('primary', picking); setStatus(picking?'Pipetta mód: koppints egy blokkra':'Pipetta ki'); };
+  document.getElementById('brush').oninput=(e)=>{ brush=clamp(+e.target.value||1,1,10); };
 
-        if(o.type==='box'){
-          const oy=G.groundY - o.h; neonRect(sx,oy,o.w,o.h,col,14);
-        }else if(o.type==='moving'){
-          const oy=G.groundY - o.h + Math.sin(elapsed*o.freq + o.phase)*o.amp;
-          neonRect(sx,oy,o.w,o.h,col,14);
-        }else if(o.type==='spike'){
-          const oy=G.groundY - o.h; neonTri(sx,oy,o.w,o.h,col);
-        }else if(o.type==='saw'){
-          const cy = G.groundY + o.yOffset + Math.sin(elapsed*1.2)*6;
-          const cx = sx + o.r + 10;
-          ctx.save();
-          ctx.translate(cx,cy); ctx.rotate(elapsed*o.spin); neonCircle(0,0,o.r,col); // forgás
-          ctx.restore();
-        }else if(o.type==='pit'){
-          // rajz: sötétebb „lyuk” és perem fény
-          const y=G.groundY; const w=o.w;
-          ctx.fillStyle='rgba(10,13,23,.95)'; ctx.fillRect(sx,y,w,canvas.height-y);
-          ctx.strokeStyle='rgba(0,229,255,.35)'; ctx.beginPath(); ctx.moveTo(sx,y+1); ctx.lineTo(sx+w,y+1); ctx.stroke();
+  // Gyorsbillentyűk
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='v' || e.key==='V'){ picking=!picking; eraser=false; bPick.classList.toggle('primary', picking); setStatus(picking?'Pipetta mód':''); }
+    if(e.key==='e' || e.key==='E'){ eraser=!eraser; picking=false; bErase.classList.toggle('primary', eraser); setStatus(eraser?'Radír mód':'Rajzolás'); }
+    if(e.key==='+' || e.key==='='){ applyZoom(innerWidth/2, innerHeight/2, clamp(zoom*1.1, MIN_Z, MAX_Z)); }
+    if(e.key==='-' || e.key==='_'){ applyZoom(innerWidth/2, innerHeight/2, clamp(zoom/1.1, MIN_Z, MAX_Z)); }
+    if(e.key==='0'){ zoom=1; camX=camY=0; draw(); }
+  });
+
+  /* ================== Mentés / betöltés ================== */
+  function exportWorld(){
+    // tömör: szélesség, magasság, soronként base64 (Uint16 → Uint8)
+    const obj = { w:GRID_W, h:GRID_H, rows:[] };
+    for(let y=0;y<GRID_H;y++){
+      const row = world[y];
+      const bytes = new Uint8Array(row.length*2);
+      for(let i=0;i<row.length;i++){ bytes[i*2] = row[i] & 255; bytes[i*2+1] = (row[i]>>8) & 255; }
+      obj.rows.push(btoa(String.fromCharCode(...bytes)));
+    }
+    return JSON.stringify(obj);
+  }
+  function importWorld(json){
+    try{
+      const obj = JSON.parse(json);
+      if(obj.w!==GRID_W || obj.h!==GRID_H) throw new Error('Méret eltér');
+      const a = makeEmptyWorld(GRID_W, GRID_H);
+      for(let y=0;y<GRID_H;y++){
+        const bin = atob(obj.rows[y]);
+        const bytes = new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+        for(let x=0;x<GRID_W;x++){
+          a[y][x] = bytes[x*2] | (bytes[x*2+1]<<8);
         }
       }
+      world = a; camX=camY=0; draw();
+    }catch(e){ alert('Hibás JSON/import.'); }
+  }
 
-      // progress bar
-      const p = Math.max(0, Math.min(1, camX/level.length));
-      const barW=Math.min(canvas.width*0.6,320), barX=(canvas.width-barW)/2, barY=18;
-      ctx.fillStyle='rgba(16,22,36,.7)'; ctx.fillRect(barX,barY,barW,6);
-      ctx.fillStyle='#00e5ff'; ctx.fillRect(barX,barY,barW*p,6);
-      ctx.strokeStyle='#21304a'; ctx.strokeRect(barX+0.5,barY+0.5,barW-1,5);
+  /* ================== Ads hook – későbbre ================== */
+  const Ads = {
+    async rewardedHint(){
+      // IDE jön majd az AdMob rewarded video hívás.
+      // Most: szimuláció, 1s „reklám”
+      return new Promise(res=>setTimeout(()=>res(true), 1000));
     }
-  }
+  };
 
-  function fail(){ beep(220); state='fail'; showPanel(pFail); Ads.onLevelEnd(level.idx, elapsed, tryCount); }
-  function win(){ beep(1320); state='win'; showPanel(pWin); if(level.idx+1>unlocked){ unlocked=level.idx+1; localStorage.setItem('neon_unlocked2',unlocked); } Ads.onLevelEnd(level.idx, elapsed, tryCount); renderLevelButtons(); }
+  /* ================== UI státusz ================== */
+  function setStatus(t){ document.getElementById('status').textContent = '• ' + t; }
 
-  function loop(ts){ const t=ts/1000, dt=Math.min(0.033, t-(loop.t||t)); loop.t=t; if(state==='playing') step(dt); render(); requestAnimationFrame(loop); }
-  requestAnimationFrame(loop);
-
-  /* ===== Menü / szintgombok ===== */
-  const levelGrid=$('#levelGrid');
-  function renderLevelButtons(){
-    levelGrid.innerHTML='';
-    levels.forEach(L=>{
-      const b=document.createElement('button');
-      b.textContent='Szint '+L.idx;
-      if(L.idx>unlocked){ b.classList.add('lock'); b.textContent+=' 🔒'; }
-      b.onclick=()=>{ if(L.idx<=unlocked) start(L.idx); };
-      levelGrid.appendChild(b);
-    });
-  }
-  renderLevelButtons(); showPanel(pMenu);
+  /* ================== Boot ================== */
+  renderPalette();
+  selectBlock(DEFAULT_BLOCK);
+  fit();
+  setStatus('Koppints a rácsra blokkokat rakni. Húzd két ujjal/egérrel a nézetet. Görgő/pinch: zoom.');
 })();
 </script>
 </body>
