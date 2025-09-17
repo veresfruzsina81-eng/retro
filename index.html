@@ -1,267 +1,99 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="hu">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Kis emberke – sprite demo</title>
-<style>
-  html,body{margin:0;height:100%;background:#0b0f1a;color:#eaf2ff;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
-  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr}
-  .top{display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(16,22,36,.85);border-bottom:1px solid #21304a}
-  .kbd{background:#0f172a;border:1px solid #21304a;border-radius:8px;padding:2px 8px}
-  canvas{display:block;width:100%;height:100%;background:linear-gradient(180deg,#0a0f1a 0%,#0e1730 70%,#0a0f1a 100%)}
-</style>
+  <meta charset="UTF-8">
+  <title>Kis emberke demo</title>
+  <style>
+    body { 
+      margin: 0; 
+      background: #111; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+    }
+    canvas { 
+      background: #222; 
+      border: 2px solid white; 
+    }
+  </style>
 </head>
 <body>
-<div id="wrap">
-  <div class="top">
-    <div><b>Kis emberke</b> – nyilak: <span class="kbd">← →</span> • ugrás: <span class="kbd">SPACE</span></div>
-  </div>
-  <canvas id="game"></canvas>
-</div>
+  <canvas id="game" width="400" height="300"></canvas>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-<script>
-(()=>{
-// ===== Canvas illesztés =====
-const cvs = document.getElementById('game');
-const ctx = cvs.getContext('2d');
-const DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
-function fit(){
-  const w = innerWidth, h = innerHeight - document.querySelector('.top').offsetHeight;
-  cvs.width = Math.floor(w*DPR); cvs.height = Math.floor(h*DPR);
-  cvs.style.width = w+'px'; cvs.style.height = h+'px';
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-}
-fit(); addEventListener('resize', fit);
+    // Karakter tulajdonságai
+    let player = {
+      x: 180,
+      y: 240,
+      width: 20,
+      height: 30,
+      color: "white",
+      dy: 0,
+      jumpPower: -8,
+      gravity: 0.4,
+      onGround: true
+    };
 
-// ===== Fizika / játékos =====
-const groundY = ()=> Math.round(cvs.height/DPR*0.78);
-const G = 2000;                 // gravitáció px/s^2
-const MOVE_SPEED = 280;         // vízszintes sebesség px/s
-const JUMP_V = 820;             // kezdő ugrósebesség px/s
-let keys = {left:false, right:false, jump:false};
+    let keys = {};
 
-const player = {
-  x: 120, y: 0, w: 48, h: 60,
-  vx: 0, vy: 0,
-  facing: 1,             // 1 jobbra, -1 balra (sprite tükrözéshez)
-  state: 'idle',         // 'idle' | 'run' | 'jump'
-  frame: 0               // animáció frame index (sprite-ból)
-};
-player.y = groundY() - player.h;
+    // Billentyű figyelés
+    document.addEventListener("keydown", e => keys[e.code] = true);
+    document.addEventListener("keyup", e => keys[e.code] = false);
 
-// ===== Bemenet =====
-addEventListener('keydown', (e)=>{
-  if(e.code==='ArrowLeft'){ keys.left=true; }
-  if(e.code==='ArrowRight'){ keys.right=true; }
-  if(e.code==='Space'){ keys.jump=true; }
-});
-addEventListener('keyup', (e)=>{
-  if(e.code==='ArrowLeft'){ keys.left=false; }
-  if(e.code==='ArrowRight'){ keys.right=false; }
-  if(e.code==='Space'){ keys.jump=false; }
-});
+    function update() {
+      // Vízszintes mozgás
+      if (keys["ArrowLeft"]) player.x -= 3;
+      if (keys["ArrowRight"]) player.x += 3;
 
-// ===== Sprite generálás (offscreen) =====
-// 6 frame: 0=idle, 1..4=run, 5=jump. Mind 48x60 px
-const FW=48, FH=60, FRAMES=6;
-const sheet = document.createElement('canvas');
-sheet.width = FW*FRAMES; sheet.height = FH;
-const sctx = sheet.getContext('2d');
+      // Ugrás
+      if (keys["Space"] && player.onGround) {
+        player.dy = player.jumpPower;
+        player.onGround = false;
+      }
 
-function drawDude(g, x, y, t){
-  // t: 0..1 idő a ciklusban futásnál; ugrásnál külön póz
-  // Stílus: kis pixel-szerű figura, sapka, póló, nadrág, cipő
-  const skin = '#ffd7b1', hat='#ff3355', shirt='#4cc9f0', pants='#2242a6', shoe='#111', outline='#0a0a12';
+      // Gravitáció
+      player.dy += player.gravity;
+      player.y += player.dy;
 
-  g.save();
-  g.translate(x,y);
-
-  // árnyék (alul)
-  g.fillStyle = 'rgba(0,0,0,.18)';
-  g.beginPath(); g.ellipse(0, FH-2, 14, 3, 0, 0, Math.PI*2); g.fill();
-
-  // kar/ láb swing számítás
-  const legA = Math.sin(t*2*Math.PI)*0.7;            // -0.7..0.7 rad
-  const legB = Math.sin(t*2*Math.PI + Math.PI)*0.7;
-  const armA = Math.sin(t*2*Math.PI + Math.PI)*0.9;
-  const armB = Math.sin(t*2*Math.PI)*0.9;
-
-  // kontúr stroke segéd
-  function strokeRect(x,y,w,h,r=0){
-    g.lineWidth=1.5; g.strokeStyle=outline;
-    if(r>0){
-      g.beginPath();
-      g.moveTo(x+r,y);
-      g.arcTo(x+w,y,x+w,y+h,r);
-      g.arcTo(x+w,y+h,x,y+h,r);
-      g.arcTo(x,y+h,x,y,r);
-      g.arcTo(x,y,x+w,y,r);
-      g.closePath(); g.stroke();
-    }else{
-      g.strokeRect(x+0.5,y+0.5,w-1,h-1);
+      // Talaj ellenőrzés
+      if (player.y + player.height >= canvas.height - 20) {
+        player.y = canvas.height - 20 - player.height;
+        player.dy = 0;
+        player.onGround = true;
+      }
     }
-  }
 
-  // LÁBAK
-  function leg(x0, phase, color){
-    g.save();
-    g.translate(x0, FH-16);
-    g.rotate(phase);
-    g.fillStyle=color;
-    g.fillRect(-4,-22,8,22); strokeRect(-4,-22,8,22,3);
-    // cipő
-    g.fillStyle=shoe; g.fillRect(-6,-2,12,6); strokeRect(-6,-2,12,6,2);
-    g.restore();
-  }
+    function drawPlayer() {
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
 
-  // KAROK
-  function arm(x0,y0, phase, color){
-    g.save(); g.translate(x0,y0); g.rotate(phase);
-    g.fillStyle=color; g.fillRect(-3,0,6,18); strokeRect(-3,0,6,18,3);
-    // kéz
-    g.fillStyle=skin; g.fillRect(-3,18,6,6); strokeRect(-3,18,6,6,2);
-    g.restore();
-  }
+      // fej
+      ctx.fillStyle = "lightgray";
+      ctx.fillRect(player.x + 4, player.y - 10, 12, 10);
 
-  // test + fej fix pozíció
-  // ugrásnál test kissé feljebb és előre dől
-  let torsoX=FW/2, torsoY=FH-36, lean=0;
-  if(player.state==='jump'){ torsoY-=6; lean = 0.2; }
+      // lábak
+      ctx.fillStyle = "cyan";
+      ctx.fillRect(player.x, player.y + player.height, 8, 6);
+      ctx.fillRect(player.x + 12, player.y + player.height, 8, 6);
+    }
 
-  // hátsó láb/kar (mélység)
-  leg(torsoX-7, legA, pants);
-  arm(torsoX+12, torsoY+6, armA, shirt);
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // TÖRZS
-  g.save();
-  g.translate(torsoX, torsoY);
-  g.rotate(lean);
-  // póló
-  g.fillStyle=shirt; g.fillRect(-12,-14,24,24); strokeRect(-12,-14,24,24,4);
-  // nyak
-  g.fillStyle=skin; g.fillRect(-5,-18,10,6); strokeRect(-5,-18,10,6,2);
-  // fej
-  g.fillStyle=skin; g.beginPath(); g.ellipse(0,-28,10,12,0,0,Math.PI*2); g.fill(); strokeRect(-10,-40,20,24,10);
-  // sapka
-  g.fillStyle=hat; g.fillRect(-11,-40,22,8); strokeRect(-11,-40,22,8,4);
-  g.fillRect(-6,-32,12,4); strokeRect(-6,-32,12,4,2);
-  g.restore();
+      // Talaj
+      ctx.fillStyle = "green";
+      ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
 
-  // elülső láb/kar
-  leg(torsoX+7, legB, pants);
-  arm(torsoX-12, torsoY+6, armB, shirt);
+      update();
+      drawPlayer();
 
-  // nadrág felső rész
-  g.fillStyle=pants; g.fillRect(torsoX-12, torsoY+8,24,10); strokeRect(torsoX-12, torsoY+8,24,10,4);
+      requestAnimationFrame(gameLoop);
+    }
 
-  g.restore();
-}
-
-// frame-ek kirajzolása a sprite sheetre
-for(let i=0;i<FRAMES;i++){
-  const gx = i*FW, gy = 0;
-  // tisztítás
-  sctx.clearRect(gx,gy,FW,FH);
-  // idő a ciklusban a futáshoz (1..4 frame)
-  let t = 0;
-  if(i>=1 && i<=4) t = (i-1)/4; // 0, .25, .5, .75
-  // állapot beállítás „megrajzolás kedvéért”
-  const prev = player.state;
-  if(i===0) player.state='idle';
-  if(i>=1 && i<=4) player.state='run';
-  if(i===5) player.state='jump';
-  drawDude(sctx, gx+FW/2, 0, t);
-  player.state = prev;
-}
-
-// ===== Játékciklus =====
-let last = performance.now();
-let runTime = 0; // animáció idő
-
-function step(dt){
-  // vízszintes mozgás
-  player.vx = 0;
-  if(keys.left){ player.vx -= MOVE_SPEED; player.facing = -1; }
-  if(keys.right){ player.vx += MOVE_SPEED; player.facing = 1; }
-
-  // állapot
-  const onGround = (player.y + player.h >= groundY()-0.5);
-  if(keys.jump && onGround){
-    player.vy = -JUMP_V;
-  }
-
-  // gravitáció és helyzet
-  player.vy += G*dt;
-  player.x += player.vx*dt;
-  player.y += player.vy*dt;
-
-  // talaj ütközés
-  const gY = groundY();
-  if(player.y + player.h >= gY){
-    player.y = gY - player.h;
-    player.vy = 0;
-  }
-
-  // képernyőn belül tartás
-  const W = cvs.width/DPR;
-  player.x = Math.max(16, Math.min(W-16-player.w, player.x));
-
-  // animációs állapot kiválasztása
-  if(player.vy < -10 || player.vy > 10){ player.state='jump'; }
-  else if(Math.abs(player.vx) > 10){ player.state='run'; }
-  else { player.state='idle'; }
-
-  // frame váltás
-  runTime += dt;
-  if(player.state==='idle') player.frame = 0;
-  if(player.state==='run'){
-    // 10 fps körül
-    const idx = 1 + Math.floor((runTime*10)%4); // 1..4
-    player.frame = idx;
-  }
-  if(player.state==='jump') player.frame = 5;
-}
-
-function render(){
-  const W = cvs.width/DPR, H = cvs.height/DPR;
-  ctx.clearRect(0,0,W,H);
-
-  // háttér csillogás
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  for(let i=0;i<6;i++){
-    const y = (i+1)*H/8;
-    ctx.fillRect(0,y, W, 1);
-  }
-
-  // talaj
-  const gY = groundY();
-  ctx.strokeStyle='rgba(33,48,74,.6)';
-  ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(0,gY+0.5); ctx.lineTo(W,gY+0.5); ctx.stroke();
-
-  // emberke kirajzolása a sprite sheetből
-  const sx = player.frame*FW, sy = 0;
-  const dx = Math.round(player.x), dy = Math.round(player.y);
-
-  ctx.save();
-  // tükrözés balra nézésnél
-  if(player.facing===-1){
-    ctx.translate(dx + player.w/2, 0);
-    ctx.scale(-1,1);
-    ctx.translate(-(dx + player.w/2), 0);
-  }
-  ctx.drawImage(sheet, sx, sy, FW, FH, dx, dy, player.w, player.h);
-  ctx.restore();
-}
-
-function loop(now){
-  const dt = Math.min(0.03, (now-last)/1000); last = now;
-  step(dt); render();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-})();
-</script>
+    gameLoop();
+  </script>
 </body>
 </html>
