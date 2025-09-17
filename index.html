@@ -1,99 +1,254 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="hu">
 <head>
-  <meta charset="UTF-8">
-  <title>Kis emberke demo</title>
-  <style>
-    body { 
-      margin: 0; 
-      background: #111; 
-      display: flex; 
-      justify-content: center; 
-      align-items: center; 
-      height: 100vh; 
-    }
-    canvas { 
-      background: #222; 
-      border: 2px solid white; 
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Maira – mini platformer prototípus</title>
+<style>
+  html,body{height:100%;margin:0;background:#1b1e27;font-family:system-ui}
+  #wrap{display:grid;place-items:center;height:100%}
+  canvas{background:linear-gradient(#9fd4ff,#e5f4ff 70%,#9bd58a);
+         width:min(100vw,900px);height:min(70vh,520px);
+         border:8px solid #fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .hint{color:#c7d1e7;text-align:center;margin-top:10px;font-size:14px}
+</style>
 </head>
 <body>
-  <canvas id="game" width="400" height="300"></canvas>
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
+  <div id="wrap">
+    <canvas id="game" width="900" height="520" aria-label="Maira prototype"></canvas>
+    <div class="hint">Irányítás: ← → vagy A/D • Ugrás: Space / W / ↑</div>
+  </div>
 
-    // Karakter tulajdonságai
-    let player = {
-      x: 180,
-      y: 240,
-      width: 20,
-      height: 30,
-      color: "white",
-      dy: 0,
-      jumpPower: -8,
-      gravity: 0.4,
-      onGround: true
-    };
+<script>
+(() => {
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
 
-    let keys = {};
+  /* ===== Sprite gyár: Maira (pixel-art, programból rajzolva) =====
+     Készítünk egy 24x28 pixeles alap-sprite-ot több pózban, és képpé konvertáljuk. */
+  const SPR_W = 24, SPR_H = 28;
+  function makeFrame(drawFn){
+    const oc = document.createElement('canvas');
+    oc.width = SPR_W; oc.height = SPR_H;
+    const ox = oc.getContext('2d');
+    ox.imageSmoothingEnabled = false;
+    drawFn(ox);
+    const img = new Image();
+    img.src = oc.toDataURL();
+    return img;
+  }
+  // Segédek a „pixeles” rajzhoz
+  function px(ox,x,y,w,h,color){ ox.fillStyle=color; ox.fillRect(x,y,w,h); }
 
-    // Billentyű figyelés
-    document.addEventListener("keydown", e => keys[e.code] = true);
-    document.addEventListener("keyup", e => keys[e.code] = false);
+  // Színpaletta
+  const col = {
+    hair:'#1f1b2e', pony:'#6f4cff',
+    skin:'#ffd7b8', blush:'#f3a58f',
+    top:'#ff2f86', skirt:'#272e5c',
+    shoe:'#1c1c1c', sole:'#ffe28a'
+  };
 
-    function update() {
-      // Vízszintes mozgás
-      if (keys["ArrowLeft"]) player.x -= 3;
-      if (keys["ArrowRight"]) player.x += 3;
+  // Test moduláris kirajzolása adott beállítással
+  function drawBase(ox,{armSwing=0,leg=0,headTilt=0,air=false}={}){
+    ox.clearRect(0,0,SPR_W,SPR_H);
+    // árnyék a láb alatt, ha levegőben nem rajzoljuk
+    if(!air){ px(ox,4,27,16,1,'rgba(0,0,0,.25)'); }
 
-      // Ugrás
-      if (keys["Space"] && player.onGround) {
-        player.dy = player.jumpPower;
-        player.onGround = false;
+    // lábak (bal: leg<0 hátra, >0 előre)
+    const L = Math.max(-3,Math.min(3,leg));
+    // bal láb
+    px(ox,6,20,4,6,col.shoe);
+    px(ox,6,26,4,2,col.sole);
+    px(ox,6,18+Math.max(0,-L),4,2,col.skirt);
+    // jobb láb
+    px(ox,14,20,4,6,col.shoe);
+    px(ox,14,26,4,2,col.sole);
+    px(ox,14,18+Math.max(0,L),4,2,col.skirt);
+
+    // szoknya + törzs
+    px(ox,5,16,14,4,col.skirt);
+    px(ox,7,10,10,8,col.top);
+
+    // karok (armSwing: -2..2)
+    const A = Math.max(-2,Math.min(2,armSwing));
+    // bal kar (hátra)
+    px(ox,5,12-A,3,6,col.skin);
+    // jobb kar (előre)
+    px(ox,16,12+A,3,6,col.skin);
+
+    // nyak
+    px(ox,10,8,4,3,col.skin);
+
+    // fej (enyhe döntés)
+    const headX = 8 + headTilt, headY = 0;
+    // haj tömeg
+    px(ox,headX,headY+4,16,12,col.hair);
+    // arc
+    px(ox,headX+2,headY+6,10,8,col.skin);
+    // pír
+    px(ox,headX+3,headY+11,3,2,col.blush);
+    // szem
+    px(ox,headX+8,headY+9,2,2,'#1b2038');
+    // hajfrufru
+    px(ox,headX+1,headY+5,6,3,col.hair);
+    // copf
+    px(ox,headX-2,headY+8,3,6,col.hair);
+    px(ox,headX-3,headY+12,4,2,col.pony);
+  }
+
+  // Animációs kockák
+  const frames = {
+    idle: makeFrame(ox=>drawBase(ox,{armSwing:0,leg:0,headTilt:0})),
+    jump: makeFrame(ox=>drawBase(ox,{armSwing:0,leg:0,headTilt:1,air:true})),
+    run: []
+  };
+  // futás 6 kocka (kart és lábat „szinusz-szerűen” léptetjük)
+  [ -2, -1, 0, 1, 2, 1 ].forEach((val,i)=>{
+    frames.run.push( makeFrame(ox=>drawBase(ox,{armSwing:val,leg:val*1.2,headTilt: (i%3===0?1:0) })) );
+  });
+
+  /* ===== Játéktér és fizika ===== */
+  const world = {
+    g: 0.5,        // gravitáció
+    ground: 420,   // talaj y
+    friction: 0.8, // súrlódás a talajon
+    leftWall: 20, rightWall: 880
+  };
+  const player = {
+    x: 140, y: world.ground-28,
+    vx: 0, vy: 0,
+    onGround: true,
+    facing: 1, // 1: jobbra, -1: balra
+    speed: 2.2, jump: 9,
+    animTime: 0
+  };
+
+  // díszlet (egyszerű hátsó hegyek + lebegő blokk)
+  const deco = {
+    blocks: [{x:420,y:340,w:80,h:16},{x:640,y:300,w:110,h:16}]
+  };
+
+  /* ===== Input ===== */
+  const keys = {left:false,right:false,up:false};
+  function setKey(e,down){
+    const k = e.key.toLowerCase();
+    if (['arrowleft','a'].includes(k)) { keys.left = down; e.preventDefault(); }
+    if (['arrowright','d'].includes(k)) { keys.right = down; e.preventDefault(); }
+    if ([' ','arrowup','w'].includes(k)) { keys.up = down; e.preventDefault(); }
+  }
+  window.addEventListener('keydown',e=>setKey(e,true),{passive:false});
+  window.addEventListener('keyup',e=>setKey(e,false),{passive:false});
+  // mobil érintés: bal/ jobb fél képernyő mozgás, duplakopp = ugrás
+  let lastTap=0;
+  cvs.addEventListener('touchstart',(e)=>{
+    const x = e.touches[0].clientX - cvs.getBoundingClientRect().left;
+    keys.left = x < cvs.clientWidth/2;
+    keys.right = !keys.left;
+    const now=Date.now(); if(now-lastTap<250){ keys.up=true; } lastTap=now;
+  },{passive:true});
+  cvs.addEventListener('touchend',()=>{ keys.left=keys.right=false; keys.up=false; },{passive:true});
+
+  /* ===== Update & Render ===== */
+  function update(){
+    // vízszintes irány
+    if(keys.left){ player.vx -= 0.5; player.facing=-1; }
+    if(keys.right){ player.vx += 0.5; player.facing= 1; }
+
+    // ugrás
+    if(keys.up && player.onGround){
+      player.vy = -player.jump;
+      player.onGround = false;
+      keys.up = false; // egyszeri
+    }
+
+    // fizika
+    player.vy += world.g;
+    player.x += player.vx;
+    player.y += player.vy;
+
+    // falak
+    if(player.x < world.leftWall) { player.x = world.leftWall; player.vx = 0; }
+    if(player.x > world.rightWall-SPR_W) { player.x = world.rightWall-SPR_W; player.vx = 0; }
+
+    // platformok (egyszerű teteje-ütközés)
+    const platforms = [{x:0,y:world.ground,w:cvs.width,h:100}, ...deco.blocks];
+    let grounded = false;
+    for(const p of platforms){
+      if(player.x+SPR_W > p.x && player.x < p.x+p.w){
+        // fentről érkezve
+        if(player.y+SPR_H >= p.y && player.y+SPR_H <= p.y+16 && player.vy>=0){
+          player.y = p.y - SPR_H;
+          player.vy = 0; grounded = true;
+        }
       }
+    }
+    player.onGround = grounded;
 
-      // Gravitáció
-      player.dy += player.gravity;
-      player.y += player.dy;
+    // súrlódás
+    if(player.onGround) player.vx *= world.friction;
+    player.vx = Math.max(-4,Math.min(4,player.vx));
 
-      // Talaj ellenőrzés
-      if (player.y + player.height >= canvas.height - 20) {
-        player.y = canvas.height - 20 - player.height;
-        player.dy = 0;
-        player.onGround = true;
-      }
+    // animáció idő
+    player.animTime += (Math.abs(player.vx)*0.12 + (player.onGround?0.08:0.2));
+  }
+
+  function draw(){
+    ctx.imageSmoothingEnabled = false;
+
+    // háttér
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    // dombok
+    ctx.fillStyle = '#8cd27a';
+    ctx.beginPath();
+    ctx.moveTo(0,430);
+    ctx.quadraticCurveTo(200,360,380,430);
+    ctx.quadraticCurveTo(560,370,740,430);
+    ctx.lineTo(cvs.width,520); ctx.lineTo(0,520); ctx.closePath(); ctx.fill();
+
+    // platform blokkok
+    ctx.fillStyle = '#4caf50';
+    deco.blocks.forEach(b=>{
+      ctx.fillRect(b.x,b.y,b.w,b.h);
+      ctx.fillStyle='#2f7c34'; ctx.fillRect(b.x,b.y,b.w,4); ctx.fillStyle='#4caf50';
+    });
+
+    // talaj „fűszegély”
+    ctx.fillStyle = '#2f7c34';
+    ctx.fillRect(0,world.ground, cvs.width, 6);
+
+    // Maira – kockaválasztás állapot szerint
+    let img = frames.idle;
+    if(!player.onGround) img = frames.jump;
+    else if(Math.abs(player.vx)>0.2){
+      const idx = Math.floor(player.animTime) % frames.run.length;
+      img = frames.run[idx];
     }
 
-    function drawPlayer() {
-      ctx.fillStyle = player.color;
-      ctx.fillRect(player.x, player.y, player.width, player.height);
+    const drawX = Math.round(player.x);
+    const drawY = Math.round(player.y);
+    ctx.save();
+    // skálázás (pixelart nagyítása), és irány flip
+    const scale = 3; // 24x28 -> ~72x84 px
+    ctx.translate(drawX + SPR_W*scale/2, drawY + SPR_H*scale/2);
+    ctx.scale(player.facing, 1);
+    ctx.drawImage(img, -SPR_W*scale/2, -SPR_H*scale/2, SPR_W*scale, SPR_H*scale);
+    ctx.restore();
 
-      // fej
-      ctx.fillStyle = "lightgray";
-      ctx.fillRect(player.x + 4, player.y - 10, 12, 10);
+    // HUD
+    ctx.fillStyle='rgba(0,0,0,.25)';
+    ctx.fillRect(14,14,190,36);
+    ctx.fillStyle='#ffffff';
+    ctx.font='16px monospace';
+    ctx.fillText('Maira • prototype', 24, 36);
+  }
 
-      // lábak
-      ctx.fillStyle = "cyan";
-      ctx.fillRect(player.x, player.y + player.height, 8, 6);
-      ctx.fillRect(player.x + 12, player.y + player.height, 8, 6);
-    }
-
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Talaj
-      ctx.fillStyle = "green";
-      ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
-
-      update();
-      drawPlayer();
-
-      requestAnimationFrame(gameLoop);
-    }
-
-    gameLoop();
-  </script>
+  function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
 </body>
 </html>
